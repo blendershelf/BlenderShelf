@@ -694,6 +694,21 @@ def _resolve_icon_path(stored):
     return fallback if os.path.exists(fallback) else stored
 
 
+# Every field on BLENDERSHELF_button_item (and most AddonPreferences fields)
+# has update=_on_prefs_changed, which writes the whole config to disk. Set
+# while reconstructing prefs from a config file (register()'s own load, or
+# Import Settings) so that reconstruction -- which assigns dozens of
+# properties one at a time on items that start at their class defaults --
+# doesn't fire a real disk write after each individual assignment. Without
+# this, a single load could write shelf_config.json (in a transient,
+# not-yet-fully-restored shape) tens of times; the OS/Blender exiting or
+# reloading mid-load could then leave that half-restored write as the final
+# on-disk state, e.g. an item saved with is_separator still at its
+# not-yet-assigned default of False. Confirmed via a synthetic reload test
+# reproducing exactly this shape (2026-09-27).
+_loading_config = False
+
+
 def _serialize_items(coll):
     return [{"label": b.label, "icon_path": _portable_icon_path(b.icon_path), "command": b.command,
               "enabled": b.enabled, "show_in_pie": b.show_in_pie, "is_separator": b.is_separator} for b in coll]
@@ -778,6 +793,7 @@ def _migrate_config(data, saved_version):
 
 
 def _load_config_from_path(prefs, path):
+    global _loading_config
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -786,33 +802,37 @@ def _load_config_from_path(prefs, path):
     saved_version = tuple(data.get("version", (0, 0, 0)))
     if saved_version < bl_info["version"]:
         data = _migrate_config(data, saved_version)
-    prefs.top_margin = data.get("top_margin", DEFAULT_TOP_MARGIN)
-    prefs.left_margin_pct = data.get("left_margin_pct", DEFAULT_LEFT_MARGIN_PCT)
-    prefs.label_font_size = data.get("label_font_size", 7)
-    prefs.shelf_scale = data.get("shelf_scale", 1.0)
-    prefs.icon_opacity = data.get("icon_opacity", 1.0)
-    prefs.label_color = data.get("label_color", [1.0, 1.0, 1.0, 0.9])
-    prefs.btn_color = data.get("btn_color", [0.32, 0.32, 0.32, 1.0])
-    prefs.bg_color = data.get("bg_color", [0.10, 0.10, 0.10, 0.9])
-    prefs.separator_color = data.get("separator_color", [1.0, 1.0, 1.0, 0.4])
-    prefs.show_label = data.get("show_label", True)
-    prefs.show_number = data.get("show_number", True)
-    prefs.show_export_button = data.get("show_export_button", True)
-    prefs.label_placement = data.get("label_placement", 'INSIDE')
-    prefs.orientation = data.get("orientation", 'HORIZONTAL')
-    prefs.display_mode = data.get("display_mode", 'BOTH')
-    prefs.pie_mode = data.get("pie_mode", 'MIRROR')
-    prefs.pie_context_sculpt = data.get("pie_context_sculpt", False)
-    prefs.pie_context_uv = data.get("pie_context_uv", False)
-    prefs.pie_context_node_shader = data.get("pie_context_node_shader", False)
-    prefs.pie_context_node_geo = data.get("pie_context_node_geo", False)
-    _deserialize_items(prefs.buttons, data.get("buttons", []))
-    _deserialize_items(prefs.pie_buttons_object, data.get("pie_buttons_object", []))
-    _deserialize_items(prefs.pie_buttons_edit, data.get("pie_buttons_edit", []))
-    _deserialize_items(prefs.pie_buttons_sculpt, data.get("pie_buttons_sculpt", []))
-    _deserialize_items(prefs.pie_buttons_uv, data.get("pie_buttons_uv", []))
-    _deserialize_items(prefs.pie_buttons_node_shader, data.get("pie_buttons_node_shader", []))
-    _deserialize_items(prefs.pie_buttons_node_geo, data.get("pie_buttons_node_geo", []))
+    _loading_config = True
+    try:
+        prefs.top_margin = data.get("top_margin", DEFAULT_TOP_MARGIN)
+        prefs.left_margin_pct = data.get("left_margin_pct", DEFAULT_LEFT_MARGIN_PCT)
+        prefs.label_font_size = data.get("label_font_size", 7)
+        prefs.shelf_scale = data.get("shelf_scale", 1.0)
+        prefs.icon_opacity = data.get("icon_opacity", 1.0)
+        prefs.label_color = data.get("label_color", [1.0, 1.0, 1.0, 0.9])
+        prefs.btn_color = data.get("btn_color", [0.32, 0.32, 0.32, 1.0])
+        prefs.bg_color = data.get("bg_color", [0.10, 0.10, 0.10, 0.9])
+        prefs.separator_color = data.get("separator_color", [1.0, 1.0, 1.0, 0.4])
+        prefs.show_label = data.get("show_label", True)
+        prefs.show_number = data.get("show_number", True)
+        prefs.show_export_button = data.get("show_export_button", True)
+        prefs.label_placement = data.get("label_placement", 'INSIDE')
+        prefs.orientation = data.get("orientation", 'HORIZONTAL')
+        prefs.display_mode = data.get("display_mode", 'BOTH')
+        prefs.pie_mode = data.get("pie_mode", 'MIRROR')
+        prefs.pie_context_sculpt = data.get("pie_context_sculpt", False)
+        prefs.pie_context_uv = data.get("pie_context_uv", False)
+        prefs.pie_context_node_shader = data.get("pie_context_node_shader", False)
+        prefs.pie_context_node_geo = data.get("pie_context_node_geo", False)
+        _deserialize_items(prefs.buttons, data.get("buttons", []))
+        _deserialize_items(prefs.pie_buttons_object, data.get("pie_buttons_object", []))
+        _deserialize_items(prefs.pie_buttons_edit, data.get("pie_buttons_edit", []))
+        _deserialize_items(prefs.pie_buttons_sculpt, data.get("pie_buttons_sculpt", []))
+        _deserialize_items(prefs.pie_buttons_uv, data.get("pie_buttons_uv", []))
+        _deserialize_items(prefs.pie_buttons_node_shader, data.get("pie_buttons_node_shader", []))
+        _deserialize_items(prefs.pie_buttons_node_geo, data.get("pie_buttons_node_geo", []))
+    finally:
+        _loading_config = False
     return True
 
 
@@ -824,6 +844,8 @@ def _on_prefs_changed():
     # update= callback for widgets edited directly in the Preferences UI
     # (typing in a field, dragging a slider) -- operator-driven changes call
     # _save_prefs() instead, which also does the heavier wm.save_userpref().
+    if _loading_config:
+        return
     _tag_viewports_redraw()
     _save_config()
 
@@ -882,14 +904,19 @@ def _gap_target_real_index(real_indices, gap, coll_len):
 
 
 def _seed_default_buttons(prefs):
+    global _loading_config
     if len(prefs.buttons):
         return
-    for d in DEFAULT_BUTTONS:
-        item = prefs.buttons.add()
-        item.label = d["label"]
-        item.icon_path = d["icon"]
-        item.command = d["command"]
-        item.enabled = True
+    _loading_config = True
+    try:
+        for d in DEFAULT_BUTTONS:
+            item = prefs.buttons.add()
+            item.label = d["label"]
+            item.icon_path = d["icon"]
+            item.command = d["command"]
+            item.enabled = True
+    finally:
+        _loading_config = False
 
 
 class BLENDERSHELF_OT_pref_add(bpy.types.Operator):
@@ -3178,6 +3205,7 @@ def register():
     if prefs is not None:
         if not _load_config(prefs):
             _seed_default_buttons(prefs)
+            _save_config()
     _register_keymap()
     _draw_handle = bpy.types.SpaceView3D.draw_handler_add(draw_shelf, (), 'WINDOW', 'POST_PIXEL')
     _modal_stop = False
