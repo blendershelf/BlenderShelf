@@ -37,7 +37,9 @@ ICON = mod.BLENDER_ICON_DIR
 
 # ============================== CONFIG ======================================
 
-BPM = 90.0
+BPM = 100.0  # measured from untitled.wav via librosa beat-tracking: steady 0.601s
+             # quarter-note interval (std ~8ms) = ~99.83 BPM, rounded to a clean 100 --
+             # the track loops, so this constant tempo holds indefinitely.
 BEAT8 = 60.0 / BPM / 2.0  # eighth note -- the base cadence for every discrete step
 
 HOLD_SECONDS = 5.0  # empty shelf held on screen before anything happens
