@@ -2467,10 +2467,13 @@ def _round_quad(shader, x0, y0, x1, y1, color, radius):
 
 
 def _draw_grip_dots(shader, x0, y0, x1, y1, color):
-    # three dots stacked vertically in the drag handle box
+    # three dots stacked vertically in the drag handle box -- sized as a
+    # fraction of the box itself (like _draw_orientation_icon's chevron)
+    # so they scale with Shelf Size instead of staying a fixed pixel size.
     cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
-    dot_r = 1.3
-    spacing = 6
+    base = min(x1 - x0, y1 - y0)
+    dot_r = base * 0.055
+    spacing = base * 0.25
     n = 3
     offsets = [(-((n - 1) / 2.0) + i) * spacing for i in range(n)]
     for o in offsets:
