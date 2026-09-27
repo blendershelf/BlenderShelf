@@ -36,6 +36,7 @@ PRESET_EDGE_MARGIN = 20
 
 VERSIONS_JSON_URL = "https://blendershelf.github.io/BlenderShelf/versions.json"
 DOWNLOAD_PAGE_URL = "https://blendershelf.github.io/BlenderShelf/#download"
+SUPPORT_PAGE_URL = "https://blendershelf.github.io/BlenderShelf/#support"
 
 _icon_textures = {}
 
@@ -1627,6 +1628,10 @@ class BlenderShelfPreferences(bpy.types.AddonPreferences):
 
     def draw(self, context):
         layout = self.layout
+
+        # Sits right under Blender's own website/tracker links row (from
+        # doc_url/tracker_url in bl_info) so it reads as part of that group.
+        layout.operator("wm.url_open", text="Support BlenderShelf", icon='FUND').url = SUPPORT_PAGE_URL
 
         # Boxed + labeled so it reads as a separate group from the Shelf/Pie
         # Menu tabs below, instead of blending into the same visual block.
