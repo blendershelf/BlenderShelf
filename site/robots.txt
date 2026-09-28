@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://blendershelf.github.io/BlenderShelf/sitemap.xml
