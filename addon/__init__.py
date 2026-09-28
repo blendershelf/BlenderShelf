@@ -10,6 +10,13 @@ bl_info = {
     "tracker_url": "https://blendershelf.github.io/BlenderShelf/#feedback",
 }
 
+# Blender deletes the bl_info NAME from this module once it's registered as
+# an extension (blender_manifest.toml present) -- any later code reading
+# bl_info directly hits "NameError: name 'bl_info' is not defined" on
+# reinstall/reload. Capture what we need into a plain constant right here,
+# while bl_info still exists, and use this everywhere else instead.
+ADDON_VERSION = tuple(bl_info["version"])
+
 import os
 import re
 import json
@@ -727,7 +734,7 @@ def _deserialize_items(coll, data_list):
 
 def _config_to_dict(prefs):
     return {
-        "version": list(bl_info["version"]),
+        "version": list(ADDON_VERSION),
         "top_margin": prefs.top_margin,
         "left_margin_pct": prefs.left_margin_pct,
         "label_font_size": prefs.label_font_size,
@@ -799,7 +806,7 @@ def _load_config_from_path(prefs, path):
     except (OSError, ValueError):
         return False
     saved_version = tuple(data.get("version", (0, 0, 0)))
-    if saved_version < bl_info["version"]:
+    if saved_version < ADDON_VERSION:
         data = _migrate_config(data, saved_version)
     _loading_config = True
     try:
@@ -1395,7 +1402,7 @@ class BLENDERSHELF_OT_check_update(bpy.types.Operator):
             self.report({'WARNING'}, prefs.update_status)
             return {'CANCELLED'}
 
-        current = bl_info["version"]
+        current = ADDON_VERSION
         if latest > current:
             prefs.update_available = True
             prefs.update_status = "Update available: " + ".".join(map(str, latest))

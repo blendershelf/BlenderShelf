@@ -19,7 +19,15 @@ ZIP_PATH = os.path.join(OUT_DIR, "BlenderShelf.zip")
 
 # shelf_config.json holds your live buttons/colors/position; backups/ is
 # your own revert history. Neither belongs in a copy meant for other people.
-EXCLUDE_NAMES = {"shelf_config.json", "backups", "__pycache__"}
+# blender_manifest.toml MUST stay out of this zip: its mere presence makes
+# Blender treat the install as an Extension, and on an existing user's
+# update via "Install from disk" that makes Blender silently delete their
+# whole legacy scripts/addons/BlenderShelf folder -- shelf_config.json and
+# all -- and replace it with a fresh, empty extensions/user_default install.
+# Confirmed by hitting this exact wipe on a local dev install, 2026-09-28.
+# The Extensions Platform build (which DOES need the manifest) is a
+# separate, deliberate artifact -- see build_extension.py.
+EXCLUDE_NAMES = {"shelf_config.json", "backups", "__pycache__", "blender_manifest.toml"}
 
 
 def _ignore(_dir, names):
