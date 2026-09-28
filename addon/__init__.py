@@ -162,6 +162,55 @@ def _exec_shelf_command(command):
     exec(command, {"bpy": _shelf_bpy, "__name__": "__main__"})
 
 
+try:
+    from io_scene_fbx import ExportFBX as _FBXExportBase
+except ImportError:
+    _FBXExportBase = None
+
+# use_selection alone is not reliable for the shelf's Export FBX button:
+# the click happens inside the long-running blender_shelf.modal operator, and
+# by the time the file browser's own "Export FBX" confirm click actually
+# runs ExportFBX.execute(), bpy.context can no longer be trusted to still
+# report the objects that were selected at click time.
+#
+# Subclassing ExportFBX to fix this (tried first) corrupts Blender's RNA
+# registration for the real export_scene.fbx operator -- registering a
+# Python subclass of an already-registered Operator class stomps on the
+# parent class's own "invoke" callback slot, breaking File > Export > FBX
+# from the menu ("TypeError: could not find function invoke in
+# EXPORT_SCENE_OT_fbx"). Confirmed live via Blender MCP. Patching the one
+# method instead, on the original class, touches no RNA registration at all.
+_pending_export_selection = None
+_fbx_execute_original = None
+
+
+def _fbx_execute_with_pending_selection(self, context):
+    global _pending_export_selection
+    if _pending_export_selection is not None:
+        names, _pending_export_selection = _pending_export_selection, None
+        bpy.ops.object.select_all(action='DESELECT')
+        for name in names:
+            obj = bpy.data.objects.get(name)
+            if obj is not None:
+                obj.select_set(True)
+    return _fbx_execute_original(self, context)
+
+
+def _patch_fbx_export():
+    global _fbx_execute_original
+    if _FBXExportBase is None or _fbx_execute_original is not None:
+        return
+    _fbx_execute_original = _FBXExportBase.execute
+    _FBXExportBase.execute = _fbx_execute_with_pending_selection
+
+
+def _unpatch_fbx_export():
+    global _fbx_execute_original
+    if _FBXExportBase is not None and _fbx_execute_original is not None:
+        _FBXExportBase.execute = _fbx_execute_original
+    _fbx_execute_original = None
+
+
 class BLENDERSHELF_OT_add_roundcube(bpy.types.Operator):
     """Add a subdivided-cube sphere (RoundCube)"""
     bl_idname = "mesh.blendershelf_add_roundcube"
@@ -2935,6 +2984,7 @@ class BLENDERSHELF_OT_modal(bpy.types.Operator):
         global _dragging_shelf, _drag_start_mouse, _drag_start_margins, _drag_live_margins, _drag_region_width
         global _last_alive, _restart_requested
         global _moving_index, _move_insert_gap
+        global _pending_export_selection
         _last_alive = time.time()  # proof of life, independent of _modal_running
         if _modal_stop or _restart_requested:
             _modal_running = False
@@ -3067,6 +3117,7 @@ class BLENDERSHELF_OT_modal(bpy.types.Operator):
                     if ex0 <= mx <= ex1 and ey0 <= my <= ey1:
                         _export_pressed = True
                         try:
+                            _pending_export_selection = [o.name for o in context.selected_objects]
                             bpy.ops.export_scene.fbx('INVOKE_DEFAULT', use_selection=True)
                         except Exception as e:
                             self.report({'ERROR'}, f"Export FBX failed: {e}")
@@ -3277,6 +3328,7 @@ def register():
             global _center_first_run_retries
             _center_first_run_retries = _CENTER_FIRST_RUN_MAX_RETRIES
             bpy.app.timers.register(_center_position_on_first_run, first_interval=0.2)
+    _patch_fbx_export()
     _register_keymap()
     _draw_handle = bpy.types.SpaceView3D.draw_handler_add(draw_shelf, (), 'WINDOW', 'POST_PIXEL')
     _modal_stop = False
@@ -3320,6 +3372,7 @@ def unregister():
     _drag_live_margins = None
     _moving_index = None
     _move_insert_gap = None
+    _unpatch_fbx_export()
     _unregister_keymap()
     if hasattr(bpy.types, "UI_MT_button_context_menu"):
         try:
