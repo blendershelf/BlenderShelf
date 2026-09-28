@@ -765,6 +765,27 @@ def _config_to_dict(prefs):
     }
 
 
+def _config_path():
+    # An extension's own install folder is wiped on every version upgrade
+    # (confirmed directly -- see the ADDON_VERSION/bl_info comment above),
+    # and isn't guaranteed writable at all for a "System" repository install
+    # -- extensions.blender.org's own moderation guidelines call this out.
+    # bpy.utils.extension_path_user() is the addon-independent, upgrade-safe
+    # per-extension data directory Blender provides instead.
+    try:
+        user_dir = bpy.utils.extension_path_user(__package__, path="", create=True)
+        return os.path.join(user_dir, "shelf_config.json")
+    except (AttributeError, ValueError):
+        # AttributeError: Blender < 4.2, the extensions system doesn't exist
+        # yet. ValueError: this __package__ isn't a real extension package
+        # ("The 'package' does not name an extension") -- true for every
+        # legacy scripts/addons install, confirmed empirically. Both cases
+        # fall back to the old addon-folder location, which is fine there:
+        # a legacy install is only ever wiped by a manual reinstall, not by
+        # Blender's own update mechanism.
+        return CONFIG_FILE
+
+
 def _save_config_to_path(prefs, path):
     try:
         with open(path, "w", encoding="utf-8") as f:
@@ -786,7 +807,7 @@ def _save_config():
     prefs = get_prefs()
     if prefs is None:
         return
-    _save_config_to_path(prefs, CONFIG_FILE)
+    _save_config_to_path(prefs, _config_path())
 
 
 def _migrate_config(data, saved_version):
@@ -843,7 +864,7 @@ def _load_config_from_path(prefs, path):
 
 
 def _load_config(prefs):
-    return _load_config_from_path(prefs, CONFIG_FILE)
+    return _load_config_from_path(prefs, _config_path())
 
 
 def _on_prefs_changed():
