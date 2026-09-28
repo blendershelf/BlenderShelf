@@ -946,7 +946,8 @@ def _seed_default_buttons(prefs):
         _loading_config = False
 
 
-_center_first_run_retries = 25  # ~5s at 0.2s apiece before giving up
+_CENTER_FIRST_RUN_MAX_RETRIES = 25  # ~5s at 0.2s apiece before giving up
+_center_first_run_retries = _CENTER_FIRST_RUN_MAX_RETRIES
 
 
 def _center_position_on_first_run():
@@ -3274,7 +3275,7 @@ def register():
             # once -- same math Reset Position uses, so a fresh install and
             # a manual click land in the same place.
             global _center_first_run_retries
-            _center_first_run_retries = _CENTER_ON_FIRST_RUN_RETRIES
+            _center_first_run_retries = _CENTER_FIRST_RUN_MAX_RETRIES
             bpy.app.timers.register(_center_position_on_first_run, first_interval=0.2)
     _register_keymap()
     _draw_handle = bpy.types.SpaceView3D.draw_handler_add(draw_shelf, (), 'WINDOW', 'POST_PIXEL')
