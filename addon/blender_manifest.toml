@@ -1,0 +1,21 @@
+schema_version = "1.0.0"
+
+id = "blender_shelf"
+version = "0.1.6"
+name = "BlenderShelf"
+tagline = "Floating Maya-shelf-style toolbar for the 3D Viewport"
+maintainer = "DenisZakharov"
+type = "add-on"
+
+website = "https://blendershelf.github.io/BlenderShelf/"
+
+tags = ["3D View", "User Interface"]
+
+license = [
+  "SPDX:GPL-3.0-or-later",
+]
+
+blender_version_min = "4.2.0"
+
+[permissions]
+network = "Checks blendershelf.github.io for the latest release version"

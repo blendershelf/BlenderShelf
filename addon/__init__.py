@@ -36,7 +36,6 @@ PRESET_EDGE_MARGIN = 20
 
 VERSIONS_JSON_URL = "https://blendershelf.github.io/BlenderShelf/versions.json"
 DOWNLOAD_PAGE_URL = "https://blendershelf.github.io/BlenderShelf/#download"
-SUPPORT_PAGE_URL = "https://blendershelf.github.io/BlenderShelf/#support"
 
 _icon_textures = {}
 
@@ -919,6 +918,26 @@ def _seed_default_buttons(prefs):
         _loading_config = False
 
 
+_center_first_run_retries = 25  # ~5s at 0.2s apiece before giving up
+
+
+def _center_position_on_first_run():
+    global _center_first_run_retries
+    region = _find_view3d_region()
+    if region is None:
+        _center_first_run_retries -= 1
+        if _center_first_run_retries <= 0:
+            return None  # no viewport ever showed up (e.g. background mode) -- give up quietly
+        return 0.2
+    prefs = get_prefs()
+    if prefs is None:
+        return None
+    _center_shelf_position(prefs, region)
+    _tag_viewports_redraw()
+    _save_config()
+    return None
+
+
 class BLENDERSHELF_OT_pref_add(bpy.types.Operator):
     """Add a new, empty button to the given list"""
     bl_idname = "blender_shelf.pref_add_button"
@@ -1261,6 +1280,24 @@ class BLENDERSHELF_OT_edit_params(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def _center_shelf_position(prefs, region):
+    """Shared by Reset Position and the first-run default -- the two must
+    land on the same spot, or a fresh install's shelf shows up somewhere the
+    user never asked for and never confirmed via the button."""
+    items = _enabled_items()
+    total_slots = _total_slots(items)
+    # _panel_size() involves _btn_size()/_pad_size(), which are floats --
+    # top_margin is an IntProperty (a bare float raises), left_margin_pct
+    # is a fraction of region.width so it survives a resize/split.
+    vertical = _is_vertical()
+    panel_w, panel_h = _panel_size(total_slots, vertical)
+
+    center_x = max(0.0, (region.width - panel_w) / 2.0)
+    left_px = center_x if vertical else max(0.0, center_x - _aux_reserve())
+    prefs.left_margin_pct = max(0.0, min(1.0, left_px / region.width)) if region.width else 0.0
+    prefs.top_margin = PRESET_EDGE_MARGIN + _min_top_margin()
+
+
 class BLENDERSHELF_OT_pref_preset_position(bpy.types.Operator):
     """Reset the shelf to its default top-center position"""
     bl_idname = "blender_shelf.pref_preset_position"
@@ -1272,19 +1309,7 @@ class BLENDERSHELF_OT_pref_preset_position(bpy.types.Operator):
             self.report({'WARNING'}, "No 3D Viewport found")
             return {'CANCELLED'}
         prefs = get_prefs()
-        items = _enabled_items()
-        total_slots = _total_slots(items)
-        # _panel_size() involves _btn_size()/_pad_size(), which are floats --
-        # top_margin is an IntProperty (a bare float raises), left_margin_pct
-        # is a fraction of region.width so it survives a resize/split.
-        vertical = _is_vertical()
-        panel_w, panel_h = _panel_size(total_slots, vertical)
-
-        center_x = max(0.0, (region.width - panel_w) / 2.0)
-        left_px = center_x if vertical else max(0.0, center_x - _aux_reserve())
-        prefs.left_margin_pct = max(0.0, min(1.0, left_px / region.width)) if region.width else 0.0
-        prefs.top_margin = PRESET_EDGE_MARGIN + _min_top_margin()
-
+        _center_shelf_position(prefs, region)
         _tag_viewports_redraw()
         _save_prefs()
         return {'FINISHED'}
@@ -1347,6 +1372,14 @@ class BLENDERSHELF_OT_check_update(bpy.types.Operator):
         prefs = get_prefs()
         if prefs is None:
             self.report({'ERROR'}, "Preferences not found")
+            return {'CANCELLED'}
+
+        # online_access was added in Blender 4.2; this addon's min supported
+        # version is 4.1, which has no such restriction -- default to allowed.
+        if not getattr(bpy.app, "online_access", True):
+            prefs.update_available = False
+            prefs.update_status = "Online access is disabled in Blender's System preferences"
+            self.report({'WARNING'}, prefs.update_status)
             return {'CANCELLED'}
 
         try:
@@ -1655,10 +1688,6 @@ class BlenderShelfPreferences(bpy.types.AddonPreferences):
 
     def draw(self, context):
         layout = self.layout
-
-        # Sits right under Blender's own website/tracker links row (from
-        # doc_url/tracker_url in bl_info) so it reads as part of that group.
-        layout.operator("wm.url_open", text="Support BlenderShelf", icon='FUND').url = SUPPORT_PAGE_URL
 
         # Boxed + labeled so it reads as a separate group from the Shelf/Pie
         # Menu tabs below, instead of blending into the same visual block.
@@ -3209,6 +3238,16 @@ def register():
         if not _load_config(prefs):
             _seed_default_buttons(prefs)
             _save_config()
+            # First install: prefs.left_margin_pct/top_margin still sit at
+            # their raw bpy.props defaults (near the top-LEFT corner, not
+            # the centered spot Reset Position computes), because no 3D
+            # Viewport region exists yet to measure against at register()
+            # time. Retry for a few seconds until one shows up, then center
+            # once -- same math Reset Position uses, so a fresh install and
+            # a manual click land in the same place.
+            global _center_first_run_retries
+            _center_first_run_retries = _CENTER_ON_FIRST_RUN_RETRIES
+            bpy.app.timers.register(_center_position_on_first_run, first_interval=0.2)
     _register_keymap()
     _draw_handle = bpy.types.SpaceView3D.draw_handler_add(draw_shelf, (), 'WINDOW', 'POST_PIXEL')
     _modal_stop = False
