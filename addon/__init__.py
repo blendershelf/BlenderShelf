@@ -1,7 +1,7 @@
 bl_info = {
     "name": "BlenderShelf",
     "author": "DenisZakharov",
-    "version": (0, 1, 6),
+    "version": (0, 1, 7),
     "blender": (4, 1, 0),
     "location": "3D Viewport, floating overlay near the top edge",
     "description": "A floating shelf of custom buttons in the 3D viewport (Maya-shelf style)",
