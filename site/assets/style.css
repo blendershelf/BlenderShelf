@@ -118,10 +118,18 @@ header nav {
 }
 
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   font-weight: 600;
   font-size: 1.05rem;
   color: var(--text);
   letter-spacing: -0.01em;
+}
+
+.brand-icon {
+  display: block;
+  border-radius: 6px;
 }
 
 .brand-accent {
