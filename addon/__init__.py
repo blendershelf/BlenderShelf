@@ -1,7 +1,7 @@
 bl_info = {
     "name": "BlenderShelf",
     "author": "DenisZakharov",
-    "version": (0, 2, 0),
+    "version": (0, 2, 1),
     "blender": (4, 1, 0),
     "location": "3D Viewport, floating overlay near the top edge",
     "description": "A floating shelf of custom buttons in the 3D viewport (Maya-shelf style)",
@@ -594,6 +594,14 @@ class BLENDERSHELF_placement(bpy.types.PropertyGroup):
         items=(('HORIZONTAL', "Horizontal", ""), ('VERTICAL', "Vertical", "")),
         default='HORIZONTAL',
         update=lambda self, context: _on_prefs_changed())
+    display_mode: bpy.props.EnumProperty(
+        name="Display Mode",
+        items=(('SHELF', "Shelf Only", "Show the floating shelf; the pie menu stays off in this context"),
+               ('PIE', "Pie Menu Only", "Hide the shelf; open a pie menu with the hotkey instead "
+                                        "(falls back to the shelf if no hotkey is assigned)"),
+               ('BOTH', "Shelf + Pie Menu", "Show the shelf, and also allow opening the pie menu with the hotkey")),
+        default='BOTH',
+        update=lambda self, context: _on_prefs_changed())
 
 
 def get_prefs():
@@ -787,7 +795,7 @@ def _should_draw_shelf():
     if _active_target is None:
         return False
     prefs = get_prefs()
-    mode = prefs.display_mode if prefs else 'BOTH'
+    mode = _placement(prefs, _active_target).display_mode if prefs else 'BOTH'
     if mode == 'PIE':
         return not _pie_hotkey_assigned(_CONTEXTS[_active_target][2])
     return True
@@ -910,7 +918,8 @@ def _config_to_dict(prefs):
         "pie_buttons_node_shader": _serialize_items(prefs.pie_buttons_node_shader),
         "pie_buttons_node_geo": _serialize_items(prefs.pie_buttons_node_geo),
         "placements": {p.name: {"top_margin": p.top_margin, "left_margin_pct": p.left_margin_pct,
-                                "orientation": p.orientation} for p in prefs.placements},
+                                "orientation": p.orientation,
+                                "display_mode": p.display_mode} for p in prefs.placements},
     }
 
 
@@ -1003,6 +1012,7 @@ def _load_config_from_path(prefs, path):
                 p.top_margin = d.get("top_margin", DEFAULT_TOP_MARGIN)
                 p.left_margin_pct = d.get("left_margin_pct", DEFAULT_LEFT_MARGIN_PCT)
                 p.orientation = d.get("orientation", 'HORIZONTAL')
+                p.display_mode = d.get("display_mode", 'BOTH')
         prefs.pie_context_sculpt = data.get("pie_context_sculpt", False)
         prefs.pie_context_uv = data.get("pie_context_uv", False)
         prefs.pie_context_node_shader = data.get("pie_context_node_shader", False)
@@ -1711,6 +1721,9 @@ class BLENDERSHELF_MT_pie(bpy.types.Menu):
         if prefs is None:
             return
         target = _context_target(context.area, context.mode, prefs) or 'SHELF'
+        if _placement(prefs, target).display_mode == 'SHELF':
+            pie.label(text=f"Pie menu is off for {_TARGET_LABELS[target]} (set Shelf + Pie in its settings)", icon='INFO')
+            return
         coll, _ = _target_collection(prefs, target)
         items = [(i, b) for i, b in enumerate(coll) if b.enabled and b.show_in_pie]
         if not items:
@@ -1812,13 +1825,9 @@ class BlenderShelfPreferences(bpy.types.AddonPreferences):
                ('BOTH', "Shelf + Pie Menu", "Show the shelf, and also allow opening the pie menu with the hotkey")),
         default='BOTH',
         update=lambda self, context: _on_prefs_changed())
-    # UI navigation only -- which Preferences tab is showing. Not saved to
-    # shelf_config.json (it's not addon behavior, just where the panel is
-    # scrolled to), so no update= callback and no _save_config()/.get() entry.
+    # UI navigation only -- which context's settings the Shelf page shows. Not
+    # saved to shelf_config.json (just where the panel is looking).
     ui_context: bpy.props.EnumProperty(items=_CONTEXT_ITEMS, default='SHELF')
-    prefs_tab: bpy.props.EnumProperty(
-        items=(('SHELF', "Shelf", ""), ('PIE', "Pie Menu", "")),
-        default='SHELF')
     # Session-only, never persisted to shelf_config.json -- result of the last
     # "Check for Updates" click, cleared on Blender restart.
     update_status: bpy.props.StringProperty(default="")
@@ -1827,8 +1836,8 @@ class BlenderShelfPreferences(bpy.types.AddonPreferences):
     def draw(self, context):
         layout = self.layout
 
-        # Boxed + labeled so it reads as a separate group from the Shelf/Pie
-        # Menu tabs below, instead of blending into the same visual block.
+        # Boxed + labeled so it reads as a separate group from the per-context
+        # shelf settings below, instead of blending into the same visual block.
         general_box = layout.box()
         general_box.label(text="Backup & Updates")
         row = general_box.row(align=True)
@@ -1844,73 +1853,61 @@ class BlenderShelfPreferences(bpy.types.AddonPreferences):
 
         layout.separator()
 
-        # Two top-level sections, each self-contained: everything about the
-        # floating shelf (appearance/position + its button list), and
-        # everything about the pie menu (hotkey + mode + its button lists).
-        # Shown as tab pages (Zen UV-style prop(expand=True) row) rather than
-        # stacked collapsible panels, so only one section is visible at once.
-        layout.row().prop(self, "prefs_tab", expand=True)
+        # Global look first, then one settings page per context (chosen by the
+        # ui_context row): enable flag, position, Shelf/Pie mode, pie hotkey
+        # and that context's button list.
+        header, panel = layout.panel("blendershelf_appearance", default_closed=True)
+        header.label(text="Appearance")
+        if panel:
+            panel.row().prop(self, "shelf_scale", slider=True)
+            panel.row().prop(self, "icon_opacity", slider=True)
 
-        if self.prefs_tab == 'SHELF':
-            header, panel = layout.panel("blendershelf_appearance", default_closed=True)
-            header.label(text="Appearance")
-            if panel:
-                panel.row().prop(self, "shelf_scale", slider=True)
-                panel.row().prop(self, "icon_opacity", slider=True)
+            label_box = panel.box()
+            label_box.label(text="Label")
+            row = label_box.row()
+            row.prop(self, "show_label")
+            row.prop(self, "label_font_size")
+            label_box.row().prop(self, "label_placement", expand=True)
 
-                label_box = panel.box()
-                label_box.label(text="Label")
-                row = label_box.row()
-                row.prop(self, "show_label")
-                row.prop(self, "label_font_size")
-                label_box.row().prop(self, "label_placement", expand=True)
+            row = panel.row()
+            row.prop(self, "label_color")
+            row.prop(self, "btn_color")
+            row.prop(self, "bg_color")
+            row.prop(self, "separator_color")
+            panel.row().operator("blender_shelf.reset_appearance", icon='LOOP_BACK')
 
-                row = panel.row()
-                row.prop(self, "label_color")
-                row.prop(self, "btn_color")
-                row.prop(self, "bg_color")
-                row.prop(self, "separator_color")
-                panel.row().operator("blender_shelf.reset_appearance", icon='LOOP_BACK')
+            row = panel.row()
+            row.prop(self, "show_number")
+            row.prop(self, "show_export_button")
 
-                row = panel.row()
-                row.prop(self, "show_number")
-                row.prop(self, "show_export_button")
-
-            layout.row().prop(self, "ui_context", expand=True)
-            target = self.ui_context
-            label, flag, _area = _CONTEXTS[target]
-            if flag:
-                layout.prop(self, flag, text=f"Enable the {label} shelf")
-            if flag and not getattr(self, flag):
-                layout.label(text=f"No shelf is drawn in {label} until enabled.", icon='INFO')
-            else:
-                pos_box = layout.box()
-                pos_box.label(text=f"{label} shelf position")
-                pl = _placement(self, target)
-                row = pos_box.row()
-                row.prop(pl, "top_margin")
-                row.prop(pl, "left_margin_pct", slider=True)
-                pos_box.row().prop(pl, "orientation", expand=True)
-                pos_box.operator("blender_shelf.pref_preset_position").target = target
-                layout.label(text=f"{label} buttons -- order determines button 1..N:")
-                _draw_button_list(layout, self, target)
-
-        elif self.prefs_tab == 'PIE':
-            layout.prop(self, "display_mode")
-            if self.display_mode == 'PIE':
+        layout.row().prop(self, "ui_context", expand=True)
+        target = self.ui_context
+        label, flag, _area = _CONTEXTS[target]
+        if flag:
+            layout.prop(self, flag, text=f"Enable the {label} shelf")
+        if flag and not getattr(self, flag):
+            layout.label(text=f"No shelf is drawn in {label} until enabled.", icon='INFO')
+        else:
+            pos_box = layout.box()
+            pos_box.label(text=f"{label} shelf position")
+            pl = _placement(self, target)
+            row = pos_box.row()
+            row.prop(pl, "top_margin")
+            row.prop(pl, "left_margin_pct", slider=True)
+            pos_box.row().prop(pl, "orientation", expand=True)
+            pos_box.operator("blender_shelf.pref_preset_position").target = target
+            layout.row().prop(pl, "display_mode", expand=True)
+            if pl.display_mode == 'PIE':
                 layout.label(text="(falls back to the shelf if no key is assigned below)", icon='INFO')
-            layout.label(text="The pie menu shows the shelf of the context it is opened in.", icon='INFO')
-            box = layout.box()
-            box.label(text="Pie Menu Hotkey (3D Viewport):")
-            _draw_pie_hotkey(box, context, '3D View')
-            if self.pie_context_uv:
-                box = layout.box()
-                box.label(text="Pie Menu Hotkey (UV Editor):")
-                _draw_pie_hotkey(box, context, 'Image')
-            if self.pie_context_node_shader or self.pie_context_node_geo:
-                box = layout.box()
-                box.label(text="Pie Menu Hotkey (Node Editor):")
-                _draw_pie_hotkey(box, context, 'Node Editor')
+            if pl.display_mode != 'SHELF':
+                area_type = _CONTEXTS[target][2]
+                hk_box = layout.box()
+                shared = [v[0] for t, v in _CONTEXTS.items() if v[2] == area_type and t != target]
+                hk_box.label(text=f"Pie Menu Hotkey ({_KEYMAP_FOR_AREA[area_type]})"
+                                  + (f" -- shared with {', '.join(shared)}" if shared else ""))
+                _draw_pie_hotkey(hk_box, context, _KEYMAP_FOR_AREA[area_type])
+            layout.label(text=f"{label} buttons -- order determines button 1..N:")
+            _draw_button_list(layout, self, target)
 
 
 def _draw_pie_hotkey(layout, context, keymap_name):

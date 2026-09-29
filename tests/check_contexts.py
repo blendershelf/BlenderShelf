@@ -15,7 +15,8 @@ class FakeColl(list):
     def add(self):
         # real PropertyGroup entries come with their declared defaults
         item = NS(name="", top_margin=bs.DEFAULT_TOP_MARGIN,
-                  left_margin_pct=bs.DEFAULT_LEFT_MARGIN_PCT, orientation='HORIZONTAL')
+                  left_margin_pct=bs.DEFAULT_LEFT_MARGIN_PCT, orientation='HORIZONTAL',
+                  display_mode='BOTH')
         self.append(item)
         return item
 
@@ -150,6 +151,28 @@ def test_dead_code_gone():
     p = prefs(pie_context_uv=True)
     bs.get_prefs = lambda: p
     assert [i[0] for i in bs._add_target_items(None, None)] == ['SHELF', 'PIE_UV']
+
+
+def test_per_context_display_mode():
+    p = prefs(pie_context_uv=True)
+    bs.get_prefs = lambda: p
+    bs._placement(p, 'PIE_UV').display_mode = 'PIE'
+    p.display_mode = 'BOTH'
+    bs._pie_hotkey_assigned = lambda area_type='VIEW_3D': area_type == 'IMAGE_EDITOR'
+    bs._sync_active_target(area('IMAGE_EDITOR', ui_type='UV'), 'OBJECT')
+    assert not bs._should_draw_shelf()  # UV: pie-only and its hotkey is assigned -> shelf hidden
+    bs._sync_active_target(area('VIEW_3D'), 'OBJECT')
+    assert bs._should_draw_shelf()  # Object is still Shelf + Pie
+    p.display_mode = 'PIE'
+    assert bs._should_draw_shelf()  # Object pie-only but no 3D hotkey -> falls back to the shelf
+    path = os.path.join(tempfile.gettempdir(), "bs_display_mode.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"placements": {"PIE_UV": {"display_mode": "PIE"}}}, f)
+    q = prefs()
+    assert bs._load_config_from_path(q, path)
+    assert bs._placement(q, 'PIE_UV').display_mode == 'PIE'
+    assert bs._config_to_dict(q)["placements"]["PIE_UV"]["display_mode"] == 'PIE'
+    assert bs._config_to_dict(q)["placements"]["PIE_EDIT"]["display_mode"] == 'BOTH'
 
 
 for fn in [v for k, v in sorted(globals().items()) if k.startswith("test_")]:
