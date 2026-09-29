@@ -911,3 +911,12 @@ mark_seam/merge/mod_weighted_strength):**
 Новый фидбек — новая секция (или запись в существующую, если попадает в уже
 описанную фичу). Дата и источник обязательны. Технические заметки о причине
 — только когда реально прочитан код, а не предположение с потолка.
+
+## Contextual shelves (2026-09-29)
+
+Built on branch `contextual-shelves`: one shelf per mode/editor (Object, Edit,
+Sculpt, UV, Shader, Geometry Nodes), each with its own buttons, position and
+orientation. Pie = mirror of the current context's shelf; Split pie and
+"Add to ShelfPie" removed. No config migration (old pie lists become the
+contextual shelves, disabled until enabled). Not done: pop-out windows,
+Pose/paint/Grease Pencil/Compositor contexts, renaming legacy `pie_*` names.
