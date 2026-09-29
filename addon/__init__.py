@@ -612,7 +612,6 @@ def get_prefs():
 
 _PIE_TARGETS = {
     'SHELF': ("buttons", "active_index"),
-    'PIE_OBJECT': ("pie_buttons_object", "pie_active_index_object"),
     'PIE_EDIT': ("pie_buttons_edit", "pie_active_index_edit"),
     'PIE_SCULPT': ("pie_buttons_sculpt", "pie_active_index_sculpt"),
     'PIE_UV': ("pie_buttons_uv", "pie_active_index_uv"),
@@ -635,15 +634,7 @@ _CONTEXTS = {
 _CONTEXT_ITEMS = tuple((k, v[0], "") for k, v in _CONTEXTS.items())
 _SHELF_AREA_TYPES = ('VIEW_3D', 'IMAGE_EDITOR', 'NODE_EDITOR')
 
-_TARGET_LABELS = {
-    'SHELF': "Shelf",
-    'PIE_OBJECT': "Pie: Object Mode",
-    'PIE_EDIT': "Pie: Edit Mode",
-    'PIE_SCULPT': "Pie: Sculpt Mode",
-    'PIE_UV': "Pie: UV Editor",
-    'PIE_NODE_SHADER': "Pie: Shader Editor",
-    'PIE_NODE_GEO': "Pie: Geometry Nodes",
-}
+_TARGET_LABELS = {k: v[0] for k, v in _CONTEXTS.items()}
 _TARGET_ITEMS = tuple((k, v, "") for k, v in _TARGET_LABELS.items())
 
 
@@ -907,14 +898,12 @@ def _config_to_dict(prefs):
         "label_placement": prefs.label_placement,
         "orientation": prefs.orientation,
         "display_mode": prefs.display_mode,
-        "pie_mode": prefs.pie_mode,
         "pie_context_edit": prefs.pie_context_edit,
         "pie_context_sculpt": prefs.pie_context_sculpt,
         "pie_context_uv": prefs.pie_context_uv,
         "pie_context_node_shader": prefs.pie_context_node_shader,
         "pie_context_node_geo": prefs.pie_context_node_geo,
         "buttons": _serialize_items(prefs.buttons),
-        "pie_buttons_object": _serialize_items(prefs.pie_buttons_object),
         "pie_buttons_edit": _serialize_items(prefs.pie_buttons_edit),
         "pie_buttons_sculpt": _serialize_items(prefs.pie_buttons_sculpt),
         "pie_buttons_uv": _serialize_items(prefs.pie_buttons_uv),
@@ -1006,7 +995,6 @@ def _load_config_from_path(prefs, path):
         prefs.label_placement = data.get("label_placement", 'INSIDE')
         prefs.orientation = data.get("orientation", 'HORIZONTAL')
         prefs.display_mode = data.get("display_mode", 'BOTH')
-        prefs.pie_mode = data.get("pie_mode", 'MIRROR')
         prefs.pie_context_edit = data.get("pie_context_edit", False)
         _ensure_placements(prefs)
         for name, d in data.get("placements", {}).items():
@@ -1020,7 +1008,6 @@ def _load_config_from_path(prefs, path):
         prefs.pie_context_node_shader = data.get("pie_context_node_shader", False)
         prefs.pie_context_node_geo = data.get("pie_context_node_geo", False)
         _deserialize_items(prefs.buttons, data.get("buttons", []))
-        _deserialize_items(prefs.pie_buttons_object, data.get("pie_buttons_object", []))
         _deserialize_items(prefs.pie_buttons_edit, data.get("pie_buttons_edit", []))
         _deserialize_items(prefs.pie_buttons_sculpt, data.get("pie_buttons_sculpt", []))
         _deserialize_items(prefs.pie_buttons_uv, data.get("pie_buttons_uv", []))
@@ -1243,14 +1230,15 @@ class BLENDERSHELF_MT_shelf_button_context(bpy.types.Menu):
 
     def draw(self, context):
         layout = self.layout
+        target = _active_target or 'SHELF'
         # Buttons drawn inside a popup menu run EXEC_DEFAULT by default --
         # without this, Delete's own invoke_confirm() is silently skipped
         # and it deletes immediately (confirmed live: this exact symptom).
         layout.operator_context = 'INVOKE_DEFAULT'
-        layout.operator("blender_shelf.start_move_button", text="Move", icon='ARROW_LEFTRIGHT').target = 'SHELF'
-        layout.operator("blender_shelf.add_separator", text="Add Separator", icon='REMOVE').target = 'SHELF'
+        layout.operator("blender_shelf.start_move_button", text="Move", icon='ARROW_LEFTRIGHT').target = target
+        layout.operator("blender_shelf.add_separator", text="Add Separator", icon='REMOVE').target = target
         layout.separator()
-        layout.operator("blender_shelf.pref_remove_button", text="Delete", icon='TRASH').target = 'SHELF'
+        layout.operator("blender_shelf.pref_remove_button", text="Delete", icon='TRASH').target = target
 
 
 _copy_destination_items_cache = []  # kept referenced -- Blender frees dynamic enum strings otherwise
@@ -1258,16 +1246,7 @@ _copy_destination_items_cache = []  # kept referenced -- Blender frees dynamic e
 
 def _copy_destination_items(self, context):
     prefs = get_prefs()
-    keys = ['SHELF', 'PIE_OBJECT', 'PIE_EDIT']
-    if prefs:
-        if prefs.pie_context_sculpt:
-            keys.append('PIE_SCULPT')
-        if prefs.pie_context_uv:
-            keys.append('PIE_UV')
-        if prefs.pie_context_node_shader:
-            keys.append('PIE_NODE_SHADER')
-        if prefs.pie_context_node_geo:
-            keys.append('PIE_NODE_GEO')
+    keys = _enabled_targets(prefs) if prefs else ['SHELF']
     global _copy_destination_items_cache
     _copy_destination_items_cache = [(k, _TARGET_LABELS[k], "") for k in keys if k != self.source]
     return _copy_destination_items_cache
@@ -1697,34 +1676,6 @@ def _get_pie_icon_id(path):
 _PIE_CLOCKWISE_ORDER = (3, 5, 1, 7, 2, 6, 0, 4)  # N, NE, E, SE, S, SW, W, NW
 
 
-def _split_pie_target(context, prefs):
-    # In Split pie mode, which target list a given invocation routes to.
-    # Object/Edit are always on; Sculpt/UV Editor/Shader Editor/Geometry
-    # Nodes only route to their own list once their Preferences checkbox is
-    # enabled -- until then (or in any other context: Pose, Edit Curve,
-    # plain Image Editor, Compositor, ...) this returns None and the caller
-    # falls back to mirroring the shelf, same as Mirror mode. Shader Editor
-    # and Geometry Nodes share one editor space (area.type == 'NODE_EDITOR')
-    # but are otherwise-incompatible node systems, so they're split by
-    # space_data.tree_type into two independent lists, not one.
-    area = context.area
-    if area and area.type == 'NODE_EDITOR':
-        tree_type = getattr(context.space_data, "tree_type", "")
-        if tree_type == 'ShaderNodeTree' and prefs.pie_context_node_shader:
-            return 'PIE_NODE_SHADER'
-        if tree_type == 'GeometryNodeTree' and prefs.pie_context_node_geo:
-            return 'PIE_NODE_GEO'
-    if area and area.type == 'IMAGE_EDITOR' and area.ui_type == 'UV' and prefs.pie_context_uv:
-        return 'PIE_UV'
-    if context.mode == 'SCULPT' and prefs.pie_context_sculpt:
-        return 'PIE_SCULPT'
-    if context.mode == 'OBJECT':
-        return 'PIE_OBJECT'
-    if context.mode == 'EDIT_MESH':
-        return 'PIE_EDIT'
-    return None
-
-
 def _draw_pie_slots(pie, items):
     # menu_pie() always fills slots in this fixed compass order:
     # W, E, S, N, NW, NE, SW, SE. Remap so item 1 lands at the top and the
@@ -1757,24 +1708,14 @@ class BLENDERSHELF_MT_pie(bpy.types.Menu):
     def draw(self, context):
         pie = self.layout.menu_pie()
         prefs = get_prefs()
-        items = None
-        if prefs and prefs.pie_mode == 'SPLIT':
-            target = _split_pie_target(context, prefs)
-            if target is not None:
-                coll, _ = _target_collection(prefs, target)
-                items = [(i, b) for i, b in enumerate(coll) if b.enabled]
-                if not items:
-                    pie.label(text="Not configured yet", icon='INFO')
-                    return
-        if items is None:
-            # Mirror mode, or Split mode in a context with no dedicated
-            # list (Sculpt, Pose, Edit Curve, ...): mirror the shelf, same
-            # as before this pie ever had categories. Keep each item's
-            # real shelf index (1-based label) even after filtering out
-            # show_in_pie=False ones, so the number shown here still
-            # matches its number on the shelf, not its position in this
-            # (possibly sparser) pie list.
-            items = [(i, b) for i, b in enumerate(_enabled_items()) if b.show_in_pie]
+        if prefs is None:
+            return
+        target = _context_target(context.area, context.mode, prefs) or 'SHELF'
+        coll, _ = _target_collection(prefs, target)
+        items = [(i, b) for i, b in enumerate(coll) if b.enabled and b.show_in_pie]
+        if not items:
+            pie.label(text="Not configured yet", icon='INFO')
+            return
         _draw_pie_slots(pie, items)
 
 
@@ -1793,8 +1734,6 @@ class BlenderShelfPreferences(bpy.types.AddonPreferences):
 
     buttons: bpy.props.CollectionProperty(type=BLENDERSHELF_button_item)
     active_index: bpy.props.IntProperty(default=0)
-    pie_buttons_object: bpy.props.CollectionProperty(type=BLENDERSHELF_button_item)
-    pie_active_index_object: bpy.props.IntProperty(default=0)
     pie_buttons_edit: bpy.props.CollectionProperty(type=BLENDERSHELF_button_item)
     pie_active_index_edit: bpy.props.IntProperty(default=0)
     pie_buttons_sculpt: bpy.props.CollectionProperty(type=BLENDERSHELF_button_item)
@@ -1816,13 +1755,6 @@ class BlenderShelfPreferences(bpy.types.AddonPreferences):
                                                       update=lambda self, context: _on_prefs_changed())
     pie_context_node_geo: bpy.props.BoolProperty(name="Geometry Nodes", default=False,
                                                   update=lambda self, context: _on_prefs_changed())
-    pie_mode: bpy.props.EnumProperty(
-        name="Pie Menu Mode",
-        items=(('MIRROR', "Shelf = Pie", "The pie menu always duplicates the shelf buttons"),
-               ('SPLIT', "Split by Context", "Build independent pie menus for Object Mode and Edit Mode; "
-                                              "the shelf itself is unaffected")),
-        default='MIRROR',
-        update=lambda self, context: _on_prefs_changed())
     top_margin: bpy.props.IntProperty(name="Top Margin", default=DEFAULT_TOP_MARGIN, min=0,
                                        update=lambda self, context: _on_prefs_changed())
     left_margin_pct: bpy.props.FloatProperty(
@@ -2352,60 +2284,23 @@ def _capture_button_command(context):
     return op_id, label, command, _resolve_icon(op_id, op, label)
 
 
+_add_target_items_cache = []  # kept referenced -- Blender frees dynamic enum strings otherwise
+
+
+def _add_target_items(self, context):
+    prefs = get_prefs()
+    global _add_target_items_cache
+    _add_target_items_cache = [(t, _TARGET_LABELS[t], "") for t in (_enabled_targets(prefs) if prefs else ['SHELF'])]
+    return _add_target_items_cache
+
+
 class BLENDERSHELF_OT_add_from_context(bpy.types.Operator):
-    """Add the right-clicked button's action as a new shelf button"""
+    """Add the right-clicked button's action to one of the enabled shelves"""
     bl_idname = "blender_shelf.add_from_context"
     bl_label = "Add to Shelf"
     bl_options = {'REGISTER'}
 
-    def execute(self, context):
-        op_id, label, command, icon_path = _capture_button_command(context)
-        if not op_id:
-            self.report({'WARNING'}, "No operator found on this button")
-            return {'CANCELLED'}
-        prefs = get_prefs()
-        if any(b.command == command for b in prefs.buttons):
-            self.report({'INFO'}, f"'{label}' is already on the shelf")
-            return {'CANCELLED'}
-
-        item = prefs.buttons.add()
-        item.label = label
-        item.command = command
-        item.icon_path = icon_path or os.path.join(BLENDER_ICON_DIR, "MESH_MONKEY.png")
-        item.enabled = True
-        _tag_viewports_redraw()
-        _save_prefs()
-        self.report({'INFO'}, f"Added '{label}' to shelf")
-        return {'FINISHED'}
-
-
-_pie_category_items_cache = []  # kept referenced -- Blender frees dynamic enum strings otherwise
-
-
-def _pie_category_items(self, context):
-    prefs = get_prefs()
-    items = [('PIE_OBJECT', "Object Mode", ''), ('PIE_EDIT', "Edit Mode", '')]
-    if prefs:
-        if prefs.pie_context_sculpt:
-            items.append(('PIE_SCULPT', "Sculpt Mode", ''))
-        if prefs.pie_context_uv:
-            items.append(('PIE_UV', "UV Editor", ''))
-        if prefs.pie_context_node_shader:
-            items.append(('PIE_NODE_SHADER', "Shader Editor", ''))
-        if prefs.pie_context_node_geo:
-            items.append(('PIE_NODE_GEO', "Geometry Nodes", ''))
-    global _pie_category_items_cache
-    _pie_category_items_cache = items
-    return _pie_category_items_cache
-
-
-class BLENDERSHELF_OT_add_to_pie(bpy.types.Operator):
-    """Add the right-clicked button's action to one of the Split-mode pie lists"""
-    bl_idname = "blender_shelf.add_to_pie"
-    bl_label = "Add to ShelfPie"
-    bl_options = {'REGISTER'}
-
-    category: bpy.props.EnumProperty(name="Category", items=_pie_category_items)
+    category: bpy.props.EnumProperty(name="Shelf", items=_add_target_items)
     captured_label: bpy.props.StringProperty(options={'HIDDEN'})
     captured_command: bpy.props.StringProperty(options={'HIDDEN'})
     captured_icon_path: bpy.props.StringProperty(options={'HIDDEN'})
@@ -2423,9 +2318,11 @@ class BLENDERSHELF_OT_add_to_pie(bpy.types.Operator):
         self.captured_command = command
         self.captured_icon_path = icon_path or ""
         prefs = get_prefs()
-        target = _split_pie_target(context, prefs) if prefs else None
-        valid = {item[0] for item in _pie_category_items(self, context)}
-        self.category = target if target in valid else 'PIE_OBJECT'
+        valid = [item[0] for item in _add_target_items(self, context)]
+        target = _context_target(context.area, context.mode, prefs) if prefs else None
+        self.category = target if target in valid else 'SHELF'
+        if len(valid) == 1:
+            return self.execute(context)  # only the Object shelf is on: no dialog, one click
         return context.window_manager.invoke_props_dialog(self)
 
     def draw(self, context):
@@ -2436,14 +2333,14 @@ class BLENDERSHELF_OT_add_to_pie(bpy.types.Operator):
         prefs = get_prefs()
         coll, _ = _target_collection(prefs, self.category)
         if any(b.command == self.captured_command for b in coll):
-            self.report({'INFO'}, f"'{self.captured_label}' is already in that pie category")
+            self.report({'INFO'}, f"'{self.captured_label}' is already on that shelf")
             return {'CANCELLED'}
-
         item = coll.add()
         item.label = self.captured_label
         item.command = self.captured_command
         item.icon_path = self.captured_icon_path or os.path.join(BLENDER_ICON_DIR, "MESH_MONKEY.png")
         item.enabled = True
+        _tag_viewports_redraw()
         _save_prefs()
         self.report({'INFO'}, f"Added '{self.captured_label}' to {_TARGET_LABELS[self.category]}")
         return {'FINISHED'}
@@ -2453,9 +2350,6 @@ def _shelf_context_menu_draw(self, context):
     if hasattr(context, "button_operator") and context.button_operator:
         self.layout.separator()
         self.layout.operator(BLENDERSHELF_OT_add_from_context.bl_idname, icon='ADD')
-        prefs = get_prefs()
-        if prefs and prefs.pie_mode == 'SPLIT':
-            self.layout.operator(BLENDERSHELF_OT_add_to_pie.bl_idname, icon='ADD')
 
 
 # ---------------------------------------------------------------------------
@@ -3420,7 +3314,6 @@ classes = (
     BLENDERSHELF_MT_pie,
     BLENDERSHELF_OT_modal,
     BLENDERSHELF_OT_add_from_context,
-    BLENDERSHELF_OT_add_to_pie,
 )
 
 

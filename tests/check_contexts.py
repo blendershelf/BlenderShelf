@@ -141,6 +141,17 @@ def test_ui_context_selector():
     assert list(inspect.signature(bs._draw_button_list).parameters) == ["layout", "prefs", "target"]
 
 
+def test_dead_code_gone():
+    for name in ("_split_pie_target", "BLENDERSHELF_OT_add_to_pie", "_pie_category_items"):
+        assert not hasattr(bs, name), name
+    assert "PIE_OBJECT" not in bs._PIE_TARGETS
+    assert "pie_mode" not in bs.BlenderShelfPreferences.__annotations__
+    assert "category" in bs.BLENDERSHELF_OT_add_from_context.__annotations__
+    p = prefs(pie_context_uv=True)
+    bs.get_prefs = lambda: p
+    assert [i[0] for i in bs._add_target_items(None, None)] == ['SHELF', 'PIE_UV']
+
+
 for fn in [v for k, v in sorted(globals().items()) if k.startswith("test_")]:
     fn()
 print("check_contexts OK")
