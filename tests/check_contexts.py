@@ -121,6 +121,20 @@ def test_active_target_helpers():
     assert bs._active_target is None and bs._enabled_items() == [] and not bs._should_draw_shelf()
 
 
+def test_area_under_mouse():
+    def a(kind, x, w):
+        return NS(type=kind, x=x, y=0, width=w, height=100,
+                  regions=[NS(type='WINDOW', x=x, y=0)])
+    ui, view = a('IMAGE_EDITOR', 100, 100), a('VIEW_3D', 0, 100)
+    props = a('PROPERTIES', 200, 50)
+    ctx = NS(window=NS(screen=NS(areas=[view, ui, props])))
+    found, region, mx, my = bs._area_under_mouse(ctx, NS(mouse_x=150, mouse_y=20))
+    assert found is ui and (mx, my) == (50, 20)
+    assert bs._area_under_mouse(ctx, NS(mouse_x=10, mouse_y=5))[0] is view
+    assert bs._area_under_mouse(ctx, NS(mouse_x=210, mouse_y=5))[0] is None  # not a shelf area
+    assert bs._area_under_mouse(NS(window=None), NS(mouse_x=0, mouse_y=0))[0] is None
+
+
 for fn in [v for k, v in sorted(globals().items()) if k.startswith("test_")]:
     fn()
 print("check_contexts OK")

@@ -1201,9 +1201,10 @@ class BLENDERSHELF_OT_start_move_button(bpy.types.Operator):
     target: bpy.props.EnumProperty(items=_TARGET_ITEMS, default='SHELF')
 
     def execute(self, context):
-        global _moving_index, _move_insert_gap
+        global _moving_index, _move_insert_gap, _moving_target
         prefs = get_prefs()
         coll, idx_attr = _target_collection(prefs, self.target)
+        _moving_target = self.target
         _moving_index = getattr(prefs, idx_attr)
         _move_insert_gap = None
         _tag_viewports_redraw()
@@ -1218,9 +1219,10 @@ class BLENDERSHELF_OT_add_separator(bpy.types.Operator):
     target: bpy.props.EnumProperty(items=_TARGET_ITEMS, default='SHELF')
 
     def execute(self, context):
-        global _moving_index, _move_insert_gap
+        global _moving_index, _move_insert_gap, _moving_target
         prefs = get_prefs()
         coll, idx_attr = _target_collection(prefs, self.target)
+        _moving_target = self.target
         item = coll.add()
         item.label = "Separator"
         item.is_separator = True
@@ -2850,6 +2852,16 @@ def draw_shelf():
     items = _enabled_items()
     prefs = get_prefs()
     coll = _target_collection(prefs, _active_target)[0] if prefs is not None else None
+    area = bpy.context.area
+    here = area is not None and area.as_pointer() == _active_area_ptr
+    hover_index = _hover_index if here else None
+    pressed_index = _pressed_index if here else None
+    export_hover = _export_hover and here
+    export_pressed = _export_pressed and here
+    orient_hover = _orient_hover and here
+    drag_hover = _drag_hover and here
+    dragging = _dragging_shelf and here
+    moving_here = _moving_index is not None and _moving_target == _active_target
 
     color_shader = gpu.shader.from_builtin('UNIFORM_COLOR')
     image_shader = gpu.shader.from_builtin('IMAGE_COLOR')
@@ -2864,7 +2876,7 @@ def draw_shelf():
     rects = []
     draw_panel = _should_draw_shelf()
     moving_slot_i = None
-    if draw_panel and prefs is not None and _moving_index is not None:
+    if draw_panel and prefs is not None and moving_here:
         real_indices = _visible_real_indices(coll)
         if _moving_index in real_indices:
             moving_slot_i = real_indices.index(_moving_index)
@@ -2882,14 +2894,14 @@ def draw_shelf():
                 _round_quad(color_shader, x0, y0, x1, y1, dim, BTN_RADIUS)
                 continue
             if btn.is_separator:
-                if i == _pressed_index or i == _hover_index:
+                if i == pressed_index or i == hover_index:
                     _round_quad(color_shader, x0, y0, x1, y1, (1.0, 1.0, 1.0, 0.12), BTN_RADIUS)
                 _draw_separator_bar(color_shader, x0, y0, x1, y1,
                                      tuple(prefs.separator_color) if prefs else (1.0, 1.0, 1.0, 0.4))
                 continue
-            if i == _pressed_index:
+            if i == pressed_index:
                 bg = btn_pressed
-            elif i == _hover_index:
+            elif i == hover_index:
                 bg = btn_hover
             else:
                 bg = btn_normal
@@ -2905,10 +2917,10 @@ def draw_shelf():
                 image_shader.uniform_float("color", icon_color)
                 batch.draw(image_shader)
 
-            if i == _pressed_index:
+            if i == pressed_index:
                 _border(color_shader, x0, y0, x1, y1, PRESSED_BORDER)
 
-        if _moving_index is not None and moving_slot_i is not None:
+        if moving_here and here and moving_slot_i is not None:
             moving_btn = coll[_moving_index]
             btn_sz = _btn_size()
             half = btn_sz / 2.0
@@ -2954,31 +2966,31 @@ def draw_shelf():
 
         if show_export_button:
             ex0, ey0, ex1, ey1 = fbx_button_rect(region)
-            if _export_pressed:
+            if export_pressed:
                 ebg = btn_pressed
-            elif _export_hover:
+            elif export_hover:
                 ebg = btn_hover
             else:
                 ebg = btn_normal
             _round_quad(color_shader, ex0, ey0, ex1, ey1, ebg, BTN_RADIUS)
-            if _export_pressed:
+            if export_pressed:
                 _border(color_shader, ex0, ey0, ex1, ey1, PRESSED_BORDER)
 
     if draw_panel:
         ox0, oy0, ox1, oy1 = orientation_button_rect(region)
-        obg = btn_hover if _orient_hover else btn_normal
+        obg = btn_hover if orient_hover else btn_normal
         _round_quad(color_shader, ox0, oy0, ox1, oy1, obg, AUX_RADIUS)
         _draw_orientation_icon(color_shader, ox0, oy0, ox1, oy1, (1, 1, 1, 0.9), _is_vertical())
 
         dx0, dy0, dx1, dy1 = drag_handle_rect(region)
-        if _dragging_shelf:
+        if dragging:
             dbg = btn_pressed
-        elif _drag_hover:
+        elif drag_hover:
             dbg = btn_hover
         else:
             dbg = btn_normal
         _round_quad(color_shader, dx0, dy0, dx1, dy1, dbg, AUX_RADIUS)
-        if _dragging_shelf:
+        if dragging:
             _border(color_shader, dx0, dy0, dx1, dy1, PRESSED_BORDER, t=1)
         _draw_grip_dots(color_shader, dx0, dy0, dx1, dy1, (1, 1, 1, 0.6))
     gpu.state.blend_set('NONE')
@@ -3039,22 +3051,22 @@ def draw_shelf():
         blf.draw(font_id, "sel")
 
     tooltip_text = None
-    if _moving_index is not None:
+    if moving_here and here:
         tooltip_text = "Click to drop here, right-click/Esc to cancel"
-    elif _hover_index is not None and 0 <= _hover_index < len(items):
-        tooltip_text = items[_hover_index].label
-    elif _export_hover and show_export_button:
+    elif hover_index is not None and 0 <= hover_index < len(items):
+        tooltip_text = items[hover_index].label
+    elif export_hover and show_export_button:
         tooltip_text = "Export Selected to FBX"
-    elif _orient_hover:
+    elif orient_hover:
         tooltip_text = ("Click: switch to Horizontal" if _is_vertical()
                          else "Click: switch to Vertical")
-    elif _drag_hover or _dragging_shelf:
+    elif drag_hover or dragging:
         tooltip_text = "Drag to move the shelf"
     if tooltip_text:
         _draw_tooltip(color_shader, region, tooltip_text, _mouse_x, _mouse_y)
 
 
-_draw_handle = None
+_draw_handles = []  # (space class, handle)
 _modal_running = False
 _modal_stop = False
 _restart_requested = False  # like _modal_stop but for a live restart, not
@@ -3089,6 +3101,9 @@ _drag_start_mouse = (0.0, 0.0)
 _drag_start_margins = (0.0, 0.0)
 _drag_live_margins = None  # (top_margin_px, left_margin_px) while dragging, else None
 _drag_target = None  # context target being dragged (the cursor may leave its area mid-drag)
+_drag_start_abs = (0, 0)  # absolute window coords at drag start -- area-independent
+_active_area_ptr = None  # as_pointer() of the area the mouse is interacting with; hover/press/tooltip draw only there
+_moving_target = None  # context target whose list `_moving_index` indexes
 _drag_region_width = 1.0  # region.width captured at drag-start, for px<->fraction conversion
 _mouse_x = 0
 _mouse_y = 0
@@ -3104,6 +3119,23 @@ _move_insert_gap = None  # 0..N gap position (in _enabled_items() order) under t
 # Click handling -- a single persistent modal operator, started on register
 # ---------------------------------------------------------------------------
 
+def _area_under_mouse(context, event):
+    """(area, WINDOW region, region-local x, y) of the shelf-capable area under
+    the cursor, from absolute window coordinates. The modal's own
+    context.area/region is where it was *invoked*, not where the mouse is."""
+    win = context.window
+    if win is None:
+        return None, None, 0, 0
+    for area in win.screen.areas:
+        if area.type not in _SHELF_AREA_TYPES:
+            continue
+        if area.x <= event.mouse_x < area.x + area.width and area.y <= event.mouse_y < area.y + area.height:
+            for region in area.regions:
+                if region.type == 'WINDOW':
+                    return area, region, event.mouse_x - region.x, event.mouse_y - region.y
+    return None, None, 0, 0
+
+
 class BLENDERSHELF_OT_modal(bpy.types.Operator):
     bl_idname = "blender_shelf.modal"
     bl_label = "BlenderShelf Input"
@@ -3111,10 +3143,11 @@ class BLENDERSHELF_OT_modal(bpy.types.Operator):
     def modal(self, context, event):
         global _modal_running, _hover_index, _pressed_index, _mouse_x, _mouse_y
         global _export_hover, _export_pressed, _orient_hover, _drag_hover
-        global _dragging_shelf, _drag_start_mouse, _drag_start_margins, _drag_live_margins, _drag_region_width
+        global _dragging_shelf, _drag_start_mouse, _drag_start_abs, _drag_start_margins
+        global _drag_live_margins, _drag_region_width, _drag_target
         global _last_alive, _restart_requested
         global _moving_index, _move_insert_gap
-        global _pending_export_selection
+        global _pending_export_selection, _active_target, _active_area_ptr
         _last_alive = time.time()  # proof of life, independent of _modal_running
         if _modal_stop or _restart_requested:
             _modal_running = False
@@ -3125,54 +3158,58 @@ class BLENDERSHELF_OT_modal(bpy.types.Operator):
                 pass
             return {'CANCELLED'}
 
-        in_viewport = context.region and context.region.type == 'WINDOW' and context.area and context.area.type == 'VIEW_3D'
+        area, region, mx, my = _area_under_mouse(context, event)
+        if not _dragging_shelf:  # a drag keeps owning its area/target wherever the cursor goes
+            if area is not None:
+                _sync_active_target(area, context.mode)
+                _active_area_ptr = area.as_pointer()
+            else:
+                _active_target = None
+                _active_area_ptr = None
 
         if _moving_index is not None and event.type in {'RIGHTMOUSE', 'ESC'} and event.value == 'PRESS':
             _moving_index = None
             _move_insert_gap = None
-            if context.area:
-                context.area.tag_redraw()
+            _tag_viewports_redraw()
             return {'RUNNING_MODAL'}
 
         if event.type == 'MOUSEMOVE':
-            mx, my = event.mouse_region_x, event.mouse_region_y
             if _moving_index is not None:
-                _mouse_x, _mouse_y = mx, my
-                if in_viewport and _should_draw_shelf():
-                    _, _, _, _, rects = shelf_geometry(context.region)
-                    _move_insert_gap = _gap_under_mouse(rects, mx, my, _is_vertical())
-                if context.area:
-                    context.area.tag_redraw()
+                if area is not None:
+                    _mouse_x, _mouse_y = mx, my
+                    if _active_target == _moving_target and _should_draw_shelf():
+                        _, _, _, _, rects = shelf_geometry(region)
+                        _move_insert_gap = _gap_under_mouse(rects, mx, my, _is_vertical())
+                _tag_viewports_redraw()
                 return {'RUNNING_MODAL'}  # consume it -- don't hover/orbit while moving
 
             if _dragging_shelf:
-                _mouse_x, _mouse_y = mx, my
-                dx = mx - _drag_start_mouse[0]
-                dy = my - _drag_start_mouse[1]
+                dx = event.mouse_x - _drag_start_abs[0]
+                dy = event.mouse_y - _drag_start_abs[1]
+                _mouse_x, _mouse_y = _drag_start_mouse[0] + dx, _drag_start_mouse[1] + dy
                 start_top, start_left = _drag_start_margins
                 _drag_live_margins = (max(0.0, start_top - dy), max(0.0, start_left + dx))
-                if context.area:
-                    context.area.tag_redraw()
+                _tag_viewports_redraw()
                 return {'RUNNING_MODAL'}  # consume the drag, don't also orbit/pan the viewport
 
             new_hover = None
             new_export_hover = False
             new_orient_hover = False
             new_drag_hover = False
-            if in_viewport:
+            if area is not None:
                 _mouse_x, _mouse_y = mx, my
                 if _should_draw_shelf():
-                    _, _, _, _, rects = shelf_geometry(context.region)
+                    _, _, _, _, rects = shelf_geometry(region)
                     for i, (x0, y0, x1, y1) in enumerate(rects):
                         if x0 <= mx <= x1 and y0 <= my <= y1:
                             new_hover = i
                             break
                     if _export_button_enabled():
-                        ex0, ey0, ex1, ey1 = fbx_button_rect(context.region)
+                        ex0, ey0, ex1, ey1 = fbx_button_rect(region)
                         new_export_hover = ex0 <= mx <= ex1 and ey0 <= my <= ey1
-                    ox0, oy0, ox1, oy1 = orientation_button_rect(context.region)
+                    ox0, oy0, ox1, oy1 = orientation_button_rect(region)
                     new_orient_hover = ox0 <= mx <= ox1 and oy0 <= my <= oy1
-                    gx0, gy0, gx1, gy1 = drag_handle_rect(context.region)
+                    gx0, gy0, gx1, gy1 = drag_handle_rect(region)
                     new_drag_hover = gx0 <= mx <= gx1 and gy0 <= my <= gy1
             # redraw on any state change, and continuously while hovering so
             # the tooltip box tracks the cursor
@@ -3183,14 +3220,14 @@ class BLENDERSHELF_OT_modal(bpy.types.Operator):
             _export_hover = new_export_hover
             _orient_hover = new_orient_hover
             _drag_hover = new_drag_hover
-            if should_redraw and context.area:
-                context.area.tag_redraw()
+            if should_redraw:
+                _tag_viewports_redraw()  # all shelf areas: the previously-hovered one must clear too
             return {'PASS_THROUGH'}
 
         if _moving_index is not None and event.type == 'LEFTMOUSE' and event.value == 'PRESS':
             prefs = get_prefs()
             if prefs is not None and _move_insert_gap is not None:
-                coll, idx_attr = _target_collection(prefs, 'SHELF')
+                coll, idx_attr = _target_collection(prefs, _moving_target)
                 real_indices = _visible_real_indices(coll)
                 target = _gap_target_real_index(real_indices, _move_insert_gap, len(coll))
                 if target != _moving_index:
@@ -3199,83 +3236,80 @@ class BLENDERSHELF_OT_modal(bpy.types.Operator):
                     _save_prefs()
             _moving_index = None
             _move_insert_gap = None
-            for area in context.screen.areas:
-                if area.type == 'VIEW_3D':
-                    area.tag_redraw()
+            _tag_viewports_redraw()
             return {'RUNNING_MODAL'}
 
-        if event.type == 'RIGHTMOUSE' and event.value == 'PRESS' and in_viewport:
-            mx, my = event.mouse_region_x, event.mouse_region_y
+        if event.type == 'RIGHTMOUSE' and event.value == 'PRESS' and area is not None:
             if _should_draw_shelf():
-                _, _, _, _, rects = shelf_geometry(context.region)
+                _, _, _, _, rects = shelf_geometry(region)
                 for i, (x0, y0, x1, y1) in enumerate(rects):
                     if x0 <= mx <= x1 and y0 <= my <= y1:
                         prefs = get_prefs()
-                        real_indices = _visible_real_indices(prefs.buttons)
+                        coll, idx_attr = _target_collection(prefs, _active_target)
+                        real_indices = _visible_real_indices(coll)
                         if i < len(real_indices):
-                            prefs.active_index = real_indices[i]
+                            setattr(prefs, idx_attr, real_indices[i])
                             # explicit INVOKE_DEFAULT -- called from a script/
                             # modal context (not a real UI button click), so
                             # without it every operator drawn inside the menu
                             # (Delete's own invoke_confirm included) silently
                             # runs EXEC-only and skips its invoke()/dialog.
-                            bpy.ops.wm.call_menu('INVOKE_DEFAULT', name="BLENDERSHELF_MT_shelf_button_context")
+                            with context.temp_override(window=context.window, area=area, region=region):
+                                bpy.ops.wm.call_menu('INVOKE_DEFAULT', name="BLENDERSHELF_MT_shelf_button_context")
                         return {'RUNNING_MODAL'}
             return {'PASS_THROUGH'}
 
-        if event.type == 'LEFTMOUSE' and event.value == 'PRESS' and in_viewport:
-            mx, my = event.mouse_region_x, event.mouse_region_y
+        if event.type == 'LEFTMOUSE' and event.value == 'PRESS' and area is not None:
             if _should_draw_shelf():
                 items = _enabled_items()
-                _, _, _, _, rects = shelf_geometry(context.region)
+                _, _, _, _, rects = shelf_geometry(region)
                 for i, (x0, y0, x1, y1) in enumerate(rects):
                     if x0 <= mx <= x1 and y0 <= my <= y1:
                         _pressed_index = i
                         btn = items[i]
                         if btn.command:
                             try:
-                                _exec_shelf_command(btn.command)
+                                # the command must run in the editor it was clicked in
+                                # (bpy.ops.uv.* / node.* poll on the area type)
+                                with context.temp_override(window=context.window, area=area, region=region):
+                                    _exec_shelf_command(btn.command)
                             except Exception as e:
                                 self.report({'ERROR'}, f"Shelf button {i + 1} ({btn.label}) failed: {e}")
-                        for area in context.screen.areas:
-                            if area.type == 'VIEW_3D':
-                                area.tag_redraw()
+                        _tag_viewports_redraw()
                         return {'RUNNING_MODAL'}
 
                 if _export_button_enabled():
-                    ex0, ey0, ex1, ey1 = fbx_button_rect(context.region)
+                    ex0, ey0, ex1, ey1 = fbx_button_rect(region)
                     if ex0 <= mx <= ex1 and ey0 <= my <= ey1:
                         _export_pressed = True
                         try:
                             _pending_export_selection = [o.name for o in context.selected_objects]
-                            bpy.ops.export_scene.fbx('INVOKE_DEFAULT', use_selection=True)
+                            with context.temp_override(window=context.window, area=area, region=region):
+                                bpy.ops.export_scene.fbx('INVOKE_DEFAULT', use_selection=True)
                         except Exception as e:
                             self.report({'ERROR'}, f"Export FBX failed: {e}")
-                        for area in context.screen.areas:
-                            if area.type == 'VIEW_3D':
-                                area.tag_redraw()
+                        _tag_viewports_redraw()
                         return {'RUNNING_MODAL'}
 
-                ox0, oy0, ox1, oy1 = orientation_button_rect(context.region)
+                ox0, oy0, ox1, oy1 = orientation_button_rect(region)
                 if ox0 <= mx <= ox1 and oy0 <= my <= oy1:
                     prefs = get_prefs()
                     if prefs is not None:
-                        prefs.orientation = 'HORIZONTAL' if prefs.orientation == 'VERTICAL' else 'VERTICAL'
-                    for area in context.screen.areas:
-                        if area.type == 'VIEW_3D':
-                            area.tag_redraw()
+                        p = _placement(prefs, _active_target)
+                        p.orientation = 'HORIZONTAL' if p.orientation == 'VERTICAL' else 'VERTICAL'
+                    _tag_viewports_redraw()
                     return {'RUNNING_MODAL'}
 
-                gx0, gy0, gx1, gy1 = drag_handle_rect(context.region)
+                gx0, gy0, gx1, gy1 = drag_handle_rect(region)
                 if gx0 <= mx <= gx1 and gy0 <= my <= gy1:
                     _dragging_shelf = True
+                    _drag_target = _active_target
                     _drag_start_mouse = (mx, my)
-                    _drag_region_width = context.region.width
-                    _drag_start_margins = _position(context.region)
+                    _drag_start_abs = (event.mouse_x, event.mouse_y)
+                    _drag_region_width = region.width
+                    _drag_start_margins = _position(region)
                     _drag_live_margins = _drag_start_margins
-                    for area in context.screen.areas:
-                        if area.type == 'VIEW_3D':
-                            area.tag_redraw()
+                    _tag_viewports_redraw()
                     return {'RUNNING_MODAL'}
 
             return {'PASS_THROUGH'}
@@ -3283,24 +3317,21 @@ class BLENDERSHELF_OT_modal(bpy.types.Operator):
         if event.type == 'LEFTMOUSE' and event.value == 'RELEASE' and _dragging_shelf:
             _dragging_shelf = False
             prefs = get_prefs()
-            if prefs is not None and _drag_live_margins is not None:
+            if prefs is not None and _drag_live_margins is not None and _drag_target is not None:
                 top, left_px = _drag_live_margins
-                prefs.top_margin = round(top)  # IntProperty -- rejects a bare float
+                p = _placement(prefs, _drag_target)
+                p.top_margin = round(top)  # IntProperty -- rejects a bare float
                 if _drag_region_width:
-                    prefs.left_margin_pct = max(0.0, min(1.0, left_px / _drag_region_width))
+                    p.left_margin_pct = max(0.0, min(1.0, left_px / _drag_region_width))
             _drag_live_margins = None
-            for area in context.screen.areas:
-                if area.type == 'VIEW_3D':
-                    area.tag_redraw()
+            _tag_viewports_redraw()
             return {'PASS_THROUGH'}
 
         if event.type == 'LEFTMOUSE' and event.value == 'RELEASE' and (
                 _pressed_index is not None or _export_pressed):
             _pressed_index = None
             _export_pressed = False
-            for area in context.screen.areas:
-                if area.type == 'VIEW_3D':
-                    area.tag_redraw()
+            _tag_viewports_redraw()
             return {'PASS_THROUGH'}
 
         return {'PASS_THROUGH'}
@@ -3384,16 +3415,19 @@ def _start_modal():
     win = bpy.context.window
     if win is None:
         return 0.5
-    for area in win.screen.areas:
-        if area.type == 'VIEW_3D':
-            for region in area.regions:
-                if region.type == 'WINDOW':
-                    try:
-                        with bpy.context.temp_override(window=win, area=area, region=region):
-                            bpy.ops.blender_shelf.modal('INVOKE_DEFAULT')
-                    except Exception:
-                        return 0.5
-                    return 0.5
+    # Any area can host the modal now (it finds the area under the cursor
+    # itself); prefer a 3D Viewport so behavior is identical to before
+    # whenever one exists.
+    for area in sorted(win.screen.areas, key=lambda a: a.type != 'VIEW_3D'):
+        region = next((r for r in area.regions if r.type == 'WINDOW'), None)
+        if region is None:
+            continue
+        try:
+            with bpy.context.temp_override(window=win, area=area, region=region):
+                bpy.ops.blender_shelf.modal('INVOKE_DEFAULT')
+        except Exception:
+            pass
+        return 0.5
     return 0.5
 
 
@@ -3429,7 +3463,7 @@ classes = (
 
 
 def register():
-    global _draw_handle, _modal_stop, _icon_previews, _last_alive, _last_screen_ptr, _restart_requested
+    global _modal_stop, _icon_previews, _last_alive, _last_screen_ptr, _restart_requested
     _icon_previews = bpy.utils.previews.new()
     for cls in classes:
         try:
@@ -3462,7 +3496,8 @@ def register():
             bpy.app.timers.register(_center_position_on_first_run, first_interval=0.2)
     _patch_fbx_export()
     _register_keymap()
-    _draw_handle = bpy.types.SpaceView3D.draw_handler_add(draw_shelf, (), 'WINDOW', 'POST_PIXEL')
+    for space in (bpy.types.SpaceView3D, bpy.types.SpaceImageEditor, bpy.types.SpaceNodeEditor):
+        _draw_handles.append((space, space.draw_handler_add(draw_shelf, (), 'WINDOW', 'POST_PIXEL')))
     _modal_stop = False
     # a stale _last_alive surviving a quick disable/re-enable (module globals
     # aren't reset unless Blender fully re-imports the file) could otherwise
@@ -3489,7 +3524,7 @@ def register():
 
 
 def unregister():
-    global _draw_handle, _modal_stop, _hover_index, _pressed_index
+    global _modal_stop, _hover_index, _pressed_index, _drag_target, _active_area_ptr
     global _export_hover, _export_pressed, _icon_previews
     global _orient_hover, _drag_hover, _dragging_shelf, _drag_live_margins
     global _moving_index, _move_insert_gap
@@ -3504,6 +3539,8 @@ def unregister():
     _drag_live_margins = None
     _moving_index = None
     _move_insert_gap = None
+    _drag_target = None
+    _active_area_ptr = None
     _unpatch_fbx_export()
     _unregister_keymap()
     if hasattr(bpy.types, "UI_MT_button_context_menu"):
@@ -3511,9 +3548,12 @@ def unregister():
             bpy.types.UI_MT_button_context_menu.remove(_shelf_context_menu_draw)
         except ValueError:
             pass
-    if _draw_handle is not None:
-        bpy.types.SpaceView3D.draw_handler_remove(_draw_handle, 'WINDOW')
-        _draw_handle = None
+    for space, handle in _draw_handles:
+        try:
+            space.draw_handler_remove(handle, 'WINDOW')
+        except (ValueError, RuntimeError):
+            pass
+    _draw_handles.clear()
     for cls in reversed(classes):
         if cls is BLENDERSHELF_OT_modal:
             continue  # only safe to unregister once its instance has actually stopped
