@@ -1883,6 +1883,7 @@ class BlenderShelfPreferences(bpy.types.AddonPreferences):
     # UI navigation only -- which Preferences tab is showing. Not saved to
     # shelf_config.json (it's not addon behavior, just where the panel is
     # scrolled to), so no update= callback and no _save_config()/.get() entry.
+    ui_context: bpy.props.EnumProperty(items=_CONTEXT_ITEMS, default='SHELF')
     prefs_tab: bpy.props.EnumProperty(
         items=(('SHELF', "Shelf", ""), ('PIE', "Pie Menu", "")),
         default='SHELF')
@@ -1920,12 +1921,8 @@ class BlenderShelfPreferences(bpy.types.AddonPreferences):
 
         if self.prefs_tab == 'SHELF':
             header, panel = layout.panel("blendershelf_appearance", default_closed=True)
-            header.label(text="Appearance & Position")
+            header.label(text="Appearance")
             if panel:
-                panel.row().operator("blender_shelf.pref_preset_position")
-                row = panel.row()
-                row.prop(self, "top_margin")
-                row.prop(self, "left_margin_pct", slider=True)
                 panel.row().prop(self, "shelf_scale", slider=True)
                 panel.row().prop(self, "icon_opacity", slider=True)
 
@@ -1946,73 +1943,42 @@ class BlenderShelfPreferences(bpy.types.AddonPreferences):
                 row = panel.row()
                 row.prop(self, "show_number")
                 row.prop(self, "show_export_button")
-                panel.row().prop(self, "orientation", expand=True)
 
-            layout.label(text="Shelf buttons -- order determines button 1..N in the viewport:")
-            _draw_button_list(layout, self, 'SHELF', show_pie_flag=True)
+            layout.row().prop(self, "ui_context", expand=True)
+            target = self.ui_context
+            label, flag, _area = _CONTEXTS[target]
+            if flag:
+                layout.prop(self, flag, text=f"Enable the {label} shelf")
+            if flag and not getattr(self, flag):
+                layout.label(text=f"No shelf is drawn in {label} until enabled.", icon='INFO')
+            else:
+                pos_box = layout.box()
+                pos_box.label(text=f"{label} shelf position")
+                pl = _placement(self, target)
+                row = pos_box.row()
+                row.prop(pl, "top_margin")
+                row.prop(pl, "left_margin_pct", slider=True)
+                pos_box.row().prop(pl, "orientation", expand=True)
+                pos_box.operator("blender_shelf.pref_preset_position").target = target
+                layout.label(text=f"{label} buttons -- order determines button 1..N:")
+                _draw_button_list(layout, self, target)
 
         elif self.prefs_tab == 'PIE':
             layout.prop(self, "display_mode")
             if self.display_mode == 'PIE':
                 layout.label(text="(falls back to the shelf if no key is assigned below)", icon='INFO')
+            layout.label(text="The pie menu shows the shelf of the context it is opened in.", icon='INFO')
             box = layout.box()
             box.label(text="Pie Menu Hotkey (3D Viewport):")
             _draw_pie_hotkey(box, context, '3D View')
-
-            layout.row().prop(self, "pie_mode", expand=True)
-            if self.pie_mode == 'SPLIT':
-                layout.label(text="Object Mode Pie:")
-                _draw_button_list(layout, self, 'PIE_OBJECT')
-                layout.label(text="Edit Mode Pie:")
-                _draw_button_list(layout, self, 'PIE_EDIT')
-
-                extra_box = layout.box()
-                extra_box.label(text="Optional Contexts:")
-
-                def draw_sculpt():
-                    extra_box.prop(self, "pie_context_sculpt")
-                    if self.pie_context_sculpt:
-                        extra_box.label(text="Sculpt Mode Pie (uses the 3D Viewport hotkey above):")
-                        _draw_button_list(extra_box, self, 'PIE_SCULPT')
-
-                def draw_uv():
-                    extra_box.prop(self, "pie_context_uv")
-                    if self.pie_context_uv:
-                        uv_box = extra_box.box()
-                        uv_box.label(text="UV Editor Hotkey:")
-                        _draw_pie_hotkey(uv_box, context, 'Image')
-                        extra_box.label(text="UV Editor Pie:")
-                        _draw_button_list(extra_box, self, 'PIE_UV')
-
-                def draw_node_shader():
-                    extra_box.prop(self, "pie_context_node_shader")
-                    if self.pie_context_node_shader:
-                        node_box = extra_box.box()
-                        node_box.label(text="Node Editor Hotkey (shared with Geometry Nodes):")
-                        _draw_pie_hotkey(node_box, context, 'Node Editor')
-                        extra_box.label(text="Shader Editor Pie:")
-                        _draw_button_list(extra_box, self, 'PIE_NODE_SHADER')
-
-                def draw_node_geo():
-                    extra_box.prop(self, "pie_context_node_geo")
-                    if self.pie_context_node_geo:
-                        node_box = extra_box.box()
-                        node_box.label(text="Node Editor Hotkey (shared with Shader Editor):")
-                        _draw_pie_hotkey(node_box, context, 'Node Editor')
-                        extra_box.label(text="Geometry Nodes Pie:")
-                        _draw_button_list(extra_box, self, 'PIE_NODE_GEO')
-
-                # Enabled contexts float to the top, disabled ones sink to
-                # the bottom -- sorted() is stable, so within each of those
-                # two groups the original Sculpt/UV/Shader/Geo order holds.
-                blocks = [
-                    (self.pie_context_sculpt, draw_sculpt),
-                    (self.pie_context_uv, draw_uv),
-                    (self.pie_context_node_shader, draw_node_shader),
-                    (self.pie_context_node_geo, draw_node_geo),
-                ]
-                for _, draw_block in sorted(blocks, key=lambda b: not b[0]):
-                    draw_block()
+            if self.pie_context_uv:
+                box = layout.box()
+                box.label(text="Pie Menu Hotkey (UV Editor):")
+                _draw_pie_hotkey(box, context, 'Image')
+            if self.pie_context_node_shader or self.pie_context_node_geo:
+                box = layout.box()
+                box.label(text="Pie Menu Hotkey (Node Editor):")
+                _draw_pie_hotkey(box, context, 'Node Editor')
 
 
 def _draw_pie_hotkey(layout, context, keymap_name):
@@ -2032,7 +1998,7 @@ def _draw_pie_hotkey(layout, context, keymap_name):
         layout.label(text="Keymap not found -- try disabling/re-enabling the addon.")
 
 
-def _draw_button_list(layout, prefs, target, show_pie_flag=False):
+def _draw_button_list(layout, prefs, target):
     coll_name, idx_name = _PIE_TARGETS[target]
     coll = getattr(prefs, coll_name)
     idx = getattr(prefs, idx_name)
@@ -2054,8 +2020,7 @@ def _draw_button_list(layout, prefs, target, show_pie_flag=False):
         if item.is_separator:
             box.prop(item, "label", text="Separator Label")
             return
-        if show_pie_flag:
-            box.prop(item, "show_in_pie")
+        box.prop(item, "show_in_pie")
         box.prop(item, "label")
         row = box.row(align=True)
         row.prop(item, "icon_path")
@@ -2065,11 +2030,8 @@ def _draw_button_list(layout, prefs, target, show_pie_flag=False):
         row = box.row(align=True)
         row.operator("blender_shelf.edit_script", icon='TEXT').target = target
         row.operator("blender_shelf.apply_script", icon='FILE_REFRESH').target = target
-        # Copy To only makes sense with independent per-context pie lists --
-        # in Mirror mode the pie always duplicates the shelf, so there's
-        # nothing separate to copy into.
-        if prefs.pie_mode == 'SPLIT':
-            box.operator("blender_shelf.copy_button", icon='DUPLICATE', text="Copy To...").source = target
+        # copy this button into another enabled context's shelf
+        box.operator("blender_shelf.copy_button", icon='DUPLICATE', text="Copy To...").source = target
 
 
 # ---------------------------------------------------------------------------

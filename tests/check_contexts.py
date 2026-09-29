@@ -135,6 +135,12 @@ def test_area_under_mouse():
     assert bs._area_under_mouse(NS(window=None), NS(mouse_x=0, mouse_y=0))[0] is None
 
 
+def test_ui_context_selector():
+    import inspect
+    assert "ui_context" in bs.BlenderShelfPreferences.__annotations__
+    assert list(inspect.signature(bs._draw_button_list).parameters) == ["layout", "prefs", "target"]
+
+
 for fn in [v for k, v in sorted(globals().items()) if k.startswith("test_")]:
     fn()
 print("check_contexts OK")
