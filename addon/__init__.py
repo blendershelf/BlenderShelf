@@ -1,7 +1,7 @@
 bl_info = {
     "name": "BlenderShelf",
     "author": "DenisZakharov",
-    "version": (0, 2, 2),
+    "version": (0, 2, 3),
     "blender": (4, 1, 0),
     "location": "3D Viewport, floating overlay near the top edge",
     "description": "A floating shelf of custom buttons in the 3D viewport (Maya-shelf style)",
@@ -1905,19 +1905,17 @@ class BlenderShelfPreferences(bpy.types.AddonPreferences):
         if flag and not getattr(self, flag):
             layout.label(text=f"No shelf is drawn in {label} until enabled.", icon='INFO')
         else:
-            pos_box = layout.box()
-            pos_box.label(text=f"{label} shelf position")
             entry = _context_entry(self, target)
             if target != 'SHELF' and _CONTEXTS[target][2] == 'VIEW_3D':
-                pos_box.prop(entry, "sync_with_object")
+                layout.prop(entry, "sync_with_object")
             elif target == 'SHELF':
-                pos_box.label(text="Edit and Sculpt follow this position while their 'Same position' box is on.")
-            pl = _placement(self, target)
-            row = pos_box.row()
-            row.prop(pl, "top_margin")
-            row.prop(pl, "left_margin_pct", slider=True)
-            pos_box.row().prop(pl, "orientation", expand=True)
-            pos_box.operator("blender_shelf.pref_preset_position").target = target
+                layout.label(text="Edit and Sculpt follow this position while their 'Same position' box is on.")
+            # Position and flip are set interactively (drag handle / chevron on
+            # the shelf itself), so only the reset lives here, tucked away.
+            pos_header, pos_panel = layout.panel(f"blendershelf_position_{target}", default_closed=True)
+            pos_header.label(text=f"{label} shelf position")
+            if pos_panel:
+                pos_panel.operator("blender_shelf.pref_preset_position").target = target
             layout.row().prop(entry, "display_mode", expand=True)
             if entry.display_mode == 'PIE':
                 layout.label(text="(falls back to the shelf if no key is assigned below)", icon='INFO')
