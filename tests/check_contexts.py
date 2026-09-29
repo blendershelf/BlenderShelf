@@ -102,6 +102,25 @@ def test_old_config_loads():
         assert entry["top_margin"] == bs.DEFAULT_TOP_MARGIN
 
 
+def test_active_target_helpers():
+    p = prefs(pie_context_uv=True)
+    bs.get_prefs = lambda: p
+    bs._sync_active_target(area('VIEW_3D'), 'OBJECT')
+    assert bs._active_target == 'SHELF'
+    p.buttons.extend([NS(enabled=True), NS(enabled=False)])
+    p.pie_buttons_uv.extend([NS(enabled=True), NS(enabled=True), NS(enabled=False)])
+    assert len(bs._enabled_items()) == 1
+    bs._sync_active_target(area('IMAGE_EDITOR', ui_type='UV'), 'OBJECT')
+    assert bs._active_target == 'PIE_UV' and len(bs._enabled_items()) == 2
+    bs._placement(p, 'PIE_UV').orientation = 'VERTICAL'
+    assert bs._is_vertical()
+    bs._sync_active_target(area('VIEW_3D'), 'OBJECT')
+    p.orientation = 'HORIZONTAL'
+    assert not bs._is_vertical()
+    bs._sync_active_target(area('NODE_EDITOR', tree_type='ShaderNodeTree'), 'OBJECT')
+    assert bs._active_target is None and bs._enabled_items() == [] and not bs._should_draw_shelf()
+
+
 for fn in [v for k, v in sorted(globals().items()) if k.startswith("test_")]:
     fn()
 print("check_contexts OK")

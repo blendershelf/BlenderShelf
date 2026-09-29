@@ -702,17 +702,28 @@ def _placement(prefs, target):
 def _tag_viewports_redraw():
     for window in bpy.context.window_manager.windows:
         for area in window.screen.areas:
-            if area.type == 'VIEW_3D':
+            if area.type in _SHELF_AREA_TYPES:
                 area.tag_redraw()
 
 
-def _find_view3d_region():
+def _find_region(area_type='VIEW_3D'):
     for window in bpy.context.window_manager.windows:
         for area in window.screen.areas:
-            if area.type == 'VIEW_3D':
+            if area.type == area_type:
                 for region in area.regions:
                     if region.type == 'WINDOW':
                         return region
+    return None
+
+
+def _area_of_region(region):
+    """A modal operator's context.area is where it was invoked, so the area a
+    region belongs to has to be looked up, not read from the context."""
+    ptr = region.as_pointer()
+    for window in bpy.context.window_manager.windows:
+        for area in window.screen.areas:
+            if any(r.as_pointer() == ptr for r in area.regions):
+                return area
     return None
 
 
@@ -754,10 +765,25 @@ def _unregister_keymap():
     addon_keymaps.clear()
 
 
-def _pie_hotkey_assigned():
+_KEYMAP_FOR_AREA = {space: name for name, space in _PIE_KEYMAP_SPACES}
+
+# ponytail: module global, set at the top of every draw and modal event so
+# geometry/hit-test helpers need no extra parameter. Thread `target`
+# explicitly if anything ever runs draws/events concurrently.
+_active_target = None
+
+
+def _sync_active_target(area, mode):
+    global _active_target
+    prefs = get_prefs()
+    _active_target = _context_target(area, mode, prefs) if prefs else None
+    return _active_target
+
+
+def _pie_hotkey_assigned(area_type='VIEW_3D'):
     wm = bpy.context.window_manager
     kc = wm.keyconfigs.user
-    km = kc.keymaps.get('3D View') if kc else None
+    km = kc.keymaps.get(_KEYMAP_FOR_AREA.get(area_type, '3D View')) if kc else None
     if km is None:
         return False
     for kmi in km.keymap_items:
@@ -767,16 +793,20 @@ def _pie_hotkey_assigned():
 
 
 def _should_draw_shelf():
+    if _active_target is None:
+        return False
     prefs = get_prefs()
     mode = prefs.display_mode if prefs else 'BOTH'
     if mode == 'PIE':
-        return not _pie_hotkey_assigned()
+        return not _pie_hotkey_assigned(_CONTEXTS[_active_target][2])
     return True
 
 
 def _export_button_enabled():
     prefs = get_prefs()
-    return prefs.show_export_button if prefs else True
+    # FBX export only makes sense next to 3D content, not in UV/Node editors
+    return bool(prefs and prefs.show_export_button and _active_target is not None
+                and _CONTEXTS[_active_target][2] == 'VIEW_3D')
 
 
 def _total_slots(items):
@@ -1028,19 +1058,21 @@ def _save_prefs():
 
 
 def _position(region):
-    if _drag_live_margins is not None:
+    if _drag_live_margins is not None and _active_target == _drag_target:
         return _drag_live_margins
     prefs = get_prefs()
-    if prefs is None:
+    if prefs is None or _active_target is None:
         return DEFAULT_TOP_MARGIN, DEFAULT_LEFT_MARGIN_PCT * region.width
-    return prefs.top_margin, prefs.left_margin_pct * region.width
+    p = _placement(prefs, _active_target)
+    return p.top_margin, p.left_margin_pct * region.width
 
 
 def _enabled_items():
     prefs = get_prefs()
-    if prefs is None:
+    if prefs is None or _active_target is None:
         return []
-    return [b for b in prefs.buttons if b.enabled]
+    coll, _ = _target_collection(prefs, _active_target)
+    return [b for b in coll if b.enabled]
 
 
 def _visible_real_indices(coll):
@@ -1090,7 +1122,7 @@ _center_first_run_retries = _CENTER_FIRST_RUN_MAX_RETRIES
 
 def _center_position_on_first_run():
     global _center_first_run_retries
-    region = _find_view3d_region()
+    region = _find_region('VIEW_3D')
     if region is None:
         _center_first_run_retries -= 1
         if _center_first_run_retries <= 0:
@@ -1099,7 +1131,7 @@ def _center_position_on_first_run():
     prefs = get_prefs()
     if prefs is None:
         return None
-    _center_shelf_position(prefs, region)
+    _center_shelf_position(prefs, region, 'SHELF')
     _tag_viewports_redraw()
     _save_config()
     return None
@@ -1174,9 +1206,7 @@ class BLENDERSHELF_OT_start_move_button(bpy.types.Operator):
         coll, idx_attr = _target_collection(prefs, self.target)
         _moving_index = getattr(prefs, idx_attr)
         _move_insert_gap = None
-        for area in context.screen.areas:
-            if area.type == 'VIEW_3D':
-                area.tag_redraw()
+        _tag_viewports_redraw()
         return {'FINISHED'}
 
 
@@ -1198,9 +1228,7 @@ class BLENDERSHELF_OT_add_separator(bpy.types.Operator):
         _moving_index = len(coll) - 1
         _move_insert_gap = None
         _save_prefs()
-        for area in context.screen.areas:
-            if area.type == 'VIEW_3D':
-                area.tag_redraw()
+        _tag_viewports_redraw()
         return {'FINISHED'}
 
 
@@ -1447,10 +1475,12 @@ class BLENDERSHELF_OT_edit_params(bpy.types.Operator):
         return {'FINISHED'}
 
 
-def _center_shelf_position(prefs, region):
+def _center_shelf_position(prefs, region, target):
     """Shared by Reset Position and the first-run default -- the two must
     land on the same spot, or a fresh install's shelf shows up somewhere the
     user never asked for and never confirmed via the button."""
+    global _active_target
+    _active_target = target
     items = _enabled_items()
     total_slots = _total_slots(items)
     # _panel_size() involves _btn_size()/_pad_size(), which are floats --
@@ -1461,22 +1491,25 @@ def _center_shelf_position(prefs, region):
 
     center_x = max(0.0, (region.width - panel_w) / 2.0)
     left_px = center_x if vertical else max(0.0, center_x - _aux_reserve())
-    prefs.left_margin_pct = max(0.0, min(1.0, left_px / region.width)) if region.width else 0.0
-    prefs.top_margin = PRESET_EDGE_MARGIN + _min_top_margin()
+    p = _placement(prefs, target)
+    p.left_margin_pct = max(0.0, min(1.0, left_px / region.width)) if region.width else 0.0
+    p.top_margin = PRESET_EDGE_MARGIN + _min_top_margin()
 
 
 class BLENDERSHELF_OT_pref_preset_position(bpy.types.Operator):
-    """Reset the shelf to its default top-center position"""
+    """Reset this shelf to its default top-center position"""
     bl_idname = "blender_shelf.pref_preset_position"
     bl_label = "Reset Position"
+    target: bpy.props.EnumProperty(items=_CONTEXT_ITEMS, default='SHELF')
 
     def execute(self, context):
-        region = _find_view3d_region()
+        label, _flag, area_type = _CONTEXTS[self.target]
+        region = _find_region(area_type)
         if region is None:
-            self.report({'WARNING'}, "No 3D Viewport found")
+            self.report({'WARNING'}, f"No {label} area is open to measure -- open one and try again")
             return {'CANCELLED'}
         prefs = get_prefs()
-        _center_shelf_position(prefs, region)
+        _center_shelf_position(prefs, region, self.target)
         _tag_viewports_redraw()
         _save_prefs()
         return {'FINISHED'}
@@ -2376,9 +2409,7 @@ class BLENDERSHELF_OT_add_from_context(bpy.types.Operator):
         item.command = command
         item.icon_path = icon_path or os.path.join(BLENDER_ICON_DIR, "MESH_MONKEY.png")
         item.enabled = True
-        for area in context.screen.areas:
-            if area.type == 'VIEW_3D':
-                area.tag_redraw()
+        _tag_viewports_redraw()
         _save_prefs()
         self.report({'INFO'}, f"Added '{label}' to shelf")
         return {'FINISHED'}
@@ -2469,7 +2500,9 @@ def _shelf_context_menu_draw(self, context):
 
 def _is_vertical():
     prefs = get_prefs()
-    return prefs.orientation == 'VERTICAL' if prefs else False
+    if prefs is None or _active_target is None:
+        return False
+    return _placement(prefs, _active_target).orientation == 'VERTICAL'
 
 
 def _shelf_scale():
@@ -2531,7 +2564,7 @@ def shelf_geometry(region):
     # in horizontal mode (confirmed live, 2026-09-26; vertical mode was
     # unaffected since its panel width doesn't depend on button count).
     reserve = _aux_reserve()
-    edge_left, edge_right = _sidebar_bounds(bpy.context.area, region)
+    edge_left, edge_right = _sidebar_bounds(_area_of_region(region), region)
     y = region.height - top_margin - panel_h
     if vertical:
         x = left_margin
@@ -2812,7 +2845,11 @@ def draw_shelf():
     region = bpy.context.region
     if region is None:
         return
+    if _sync_active_target(bpy.context.area, bpy.context.mode) is None:
+        return  # no shelf lives in this area/mode
     items = _enabled_items()
+    prefs = get_prefs()
+    coll = _target_collection(prefs, _active_target)[0] if prefs is not None else None
 
     color_shader = gpu.shader.from_builtin('UNIFORM_COLOR')
     image_shader = gpu.shader.from_builtin('IMAGE_COLOR')
@@ -2821,14 +2858,14 @@ def draw_shelf():
     prefs = get_prefs()
     bg_color = tuple(prefs.bg_color) if prefs else DEFAULT_BG_COLOR
     btn_normal, btn_hover, btn_pressed = _button_colors()
-    show_export_button = prefs.show_export_button if prefs else True
+    show_export_button = _export_button_enabled()
     icon_color = (1.0, 1.0, 1.0, prefs.icon_opacity if prefs else 1.0)
 
     rects = []
     draw_panel = _should_draw_shelf()
     moving_slot_i = None
     if draw_panel and prefs is not None and _moving_index is not None:
-        real_indices = _visible_real_indices(prefs.buttons)
+        real_indices = _visible_real_indices(coll)
         if _moving_index in real_indices:
             moving_slot_i = real_indices.index(_moving_index)
 
@@ -2872,7 +2909,7 @@ def draw_shelf():
                 _border(color_shader, x0, y0, x1, y1, PRESSED_BORDER)
 
         if _moving_index is not None and moving_slot_i is not None:
-            moving_btn = prefs.buttons[_moving_index]
+            moving_btn = coll[_moving_index]
             btn_sz = _btn_size()
             half = btn_sz / 2.0
             gx0, gy0 = _mouse_x - half, _mouse_y - half
@@ -3051,6 +3088,7 @@ _dragging_shelf = False
 _drag_start_mouse = (0.0, 0.0)
 _drag_start_margins = (0.0, 0.0)
 _drag_live_margins = None  # (top_margin_px, left_margin_px) while dragging, else None
+_drag_target = None  # context target being dragged (the cursor may leave its area mid-drag)
 _drag_region_width = 1.0  # region.width captured at drag-start, for px<->fraction conversion
 _mouse_x = 0
 _mouse_y = 0
