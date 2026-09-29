@@ -16,7 +16,7 @@ class FakeColl(list):
         # real PropertyGroup entries come with their declared defaults
         item = NS(name="", top_margin=bs.DEFAULT_TOP_MARGIN,
                   left_margin_pct=bs.DEFAULT_LEFT_MARGIN_PCT, orientation='HORIZONTAL',
-                  display_mode='BOTH')
+                  display_mode='BOTH', sync_with_object=True)
         self.append(item)
         return item
 
@@ -173,6 +173,32 @@ def test_per_context_display_mode():
     assert bs._placement(q, 'PIE_UV').display_mode == 'PIE'
     assert bs._config_to_dict(q)["placements"]["PIE_UV"]["display_mode"] == 'PIE'
     assert bs._config_to_dict(q)["placements"]["PIE_EDIT"]["display_mode"] == 'BOTH'
+
+
+def test_3d_modes_sync_position_with_object():
+    p = prefs()
+    for target in ('PIE_EDIT', 'PIE_SCULPT'):
+        assert bs._placement(p, target) is p  # synced by default: same position/orientation as Object
+        entry = bs._context_entry(p, target)
+        assert entry is not p and entry.sync_with_object is True
+        entry.sync_with_object = False
+        assert bs._placement(p, target) is entry  # own position once unsynced
+    assert bs._placement(p, 'PIE_UV') is bs._context_entry(p, 'PIE_UV')  # never synced
+    assert bs._context_entry(p, 'SHELF') is p
+    # the Shelf/Pie mode stays per-context even while the position is synced
+    p2 = prefs()
+    bs._context_entry(p2, 'PIE_EDIT').display_mode = 'SHELF'
+    p2.display_mode = 'BOTH'
+    assert bs._context_entry(p2, 'PIE_EDIT').display_mode == 'SHELF'
+    # config roundtrip
+    path = os.path.join(tempfile.gettempdir(), "bs_sync.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"placements": {"PIE_SCULPT": {"sync_with_object": False}}}, f)
+    q = prefs()
+    assert bs._load_config_from_path(q, path)
+    assert bs._context_entry(q, 'PIE_SCULPT').sync_with_object is False
+    assert bs._context_entry(q, 'PIE_EDIT').sync_with_object is True
+    assert bs._config_to_dict(q)["placements"]["PIE_SCULPT"]["sync_with_object"] is False
 
 
 for fn in [v for k, v in sorted(globals().items()) if k.startswith("test_")]:

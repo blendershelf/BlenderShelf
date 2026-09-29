@@ -1,7 +1,7 @@
 bl_info = {
     "name": "BlenderShelf",
     "author": "DenisZakharov",
-    "version": (0, 2, 1),
+    "version": (0, 2, 2),
     "blender": (4, 1, 0),
     "location": "3D Viewport, floating overlay near the top edge",
     "description": "A floating shelf of custom buttons in the 3D viewport (Maya-shelf style)",
@@ -594,6 +594,11 @@ class BLENDERSHELF_placement(bpy.types.PropertyGroup):
         items=(('HORIZONTAL', "Horizontal", ""), ('VERTICAL', "Vertical", "")),
         default='HORIZONTAL',
         update=lambda self, context: _on_prefs_changed())
+    sync_with_object: bpy.props.BoolProperty(
+        name="Same position as Object Mode", default=True,
+        description="Use the Object Mode shelf's position and orientation, so the shelf "
+                    "stays put when switching between 3D Viewport modes",
+        update=lambda self, context: _on_prefs_changed())
     display_mode: bpy.props.EnumProperty(
         name="Display Mode",
         items=(('SHELF', "Shelf Only", "Show the floating shelf; the pie menu stays off in this context"),
@@ -684,17 +689,27 @@ def _ensure_placements(prefs):
             prefs.placements.add().name = target
 
 
-def _placement(prefs, target):
-    """Object holding top_margin / left_margin_pct / orientation for a
-    context. The Object shelf keeps those three directly on prefs (no data
-    change for it); every other context has a BLENDERSHELF_placement entry.
-    Same attribute names either way, so callers don't branch."""
+def _context_entry(prefs, target):
+    """The context's own settings object: prefs itself for the Object shelf
+    (its position/orientation/display_mode live directly on prefs, so that
+    data is unchanged), a BLENDERSHELF_placement entry for every other one."""
     if target == 'SHELF':
         return prefs
     entry = prefs.placements.get(target)
     if entry is None:
         _ensure_placements(prefs)
         entry = prefs.placements.get(target)
+    return entry
+
+
+def _placement(prefs, target):
+    """Object holding top_margin / left_margin_pct / orientation to use for a
+    context. Edit and Sculpt follow the Object shelf while `sync_with_object`
+    is on, so the shelf doesn't jump when the 3D Viewport mode changes. Same
+    attribute names either way, so callers don't branch."""
+    entry = _context_entry(prefs, target)
+    if target != 'SHELF' and _CONTEXTS[target][2] == 'VIEW_3D' and entry.sync_with_object:
+        return prefs
     return entry
 
 
@@ -795,7 +810,7 @@ def _should_draw_shelf():
     if _active_target is None:
         return False
     prefs = get_prefs()
-    mode = _placement(prefs, _active_target).display_mode if prefs else 'BOTH'
+    mode = _context_entry(prefs, _active_target).display_mode if prefs else 'BOTH'
     if mode == 'PIE':
         return not _pie_hotkey_assigned(_CONTEXTS[_active_target][2])
     return True
@@ -919,7 +934,8 @@ def _config_to_dict(prefs):
         "pie_buttons_node_geo": _serialize_items(prefs.pie_buttons_node_geo),
         "placements": {p.name: {"top_margin": p.top_margin, "left_margin_pct": p.left_margin_pct,
                                 "orientation": p.orientation,
-                                "display_mode": p.display_mode} for p in prefs.placements},
+                                "display_mode": p.display_mode,
+                                "sync_with_object": p.sync_with_object} for p in prefs.placements},
     }
 
 
@@ -1008,11 +1024,12 @@ def _load_config_from_path(prefs, path):
         _ensure_placements(prefs)
         for name, d in data.get("placements", {}).items():
             if name in _CONTEXTS and name != 'SHELF':
-                p = _placement(prefs, name)
+                p = _context_entry(prefs, name)
                 p.top_margin = d.get("top_margin", DEFAULT_TOP_MARGIN)
                 p.left_margin_pct = d.get("left_margin_pct", DEFAULT_LEFT_MARGIN_PCT)
                 p.orientation = d.get("orientation", 'HORIZONTAL')
                 p.display_mode = d.get("display_mode", 'BOTH')
+                p.sync_with_object = d.get("sync_with_object", True)
         prefs.pie_context_sculpt = data.get("pie_context_sculpt", False)
         prefs.pie_context_uv = data.get("pie_context_uv", False)
         prefs.pie_context_node_shader = data.get("pie_context_node_shader", False)
@@ -1721,7 +1738,7 @@ class BLENDERSHELF_MT_pie(bpy.types.Menu):
         if prefs is None:
             return
         target = _context_target(context.area, context.mode, prefs) or 'SHELF'
-        if _placement(prefs, target).display_mode == 'SHELF':
+        if _context_entry(prefs, target).display_mode == 'SHELF':
             pie.label(text=f"Pie menu is off for {_TARGET_LABELS[target]} (set Shelf + Pie in its settings)", icon='INFO')
             return
         coll, _ = _target_collection(prefs, target)
@@ -1890,16 +1907,21 @@ class BlenderShelfPreferences(bpy.types.AddonPreferences):
         else:
             pos_box = layout.box()
             pos_box.label(text=f"{label} shelf position")
+            entry = _context_entry(self, target)
+            if target != 'SHELF' and _CONTEXTS[target][2] == 'VIEW_3D':
+                pos_box.prop(entry, "sync_with_object")
+            elif target == 'SHELF':
+                pos_box.label(text="Edit and Sculpt follow this position while their 'Same position' box is on.")
             pl = _placement(self, target)
             row = pos_box.row()
             row.prop(pl, "top_margin")
             row.prop(pl, "left_margin_pct", slider=True)
             pos_box.row().prop(pl, "orientation", expand=True)
             pos_box.operator("blender_shelf.pref_preset_position").target = target
-            layout.row().prop(pl, "display_mode", expand=True)
-            if pl.display_mode == 'PIE':
+            layout.row().prop(entry, "display_mode", expand=True)
+            if entry.display_mode == 'PIE':
                 layout.label(text="(falls back to the shelf if no key is assigned below)", icon='INFO')
-            if pl.display_mode != 'SHELF':
+            if entry.display_mode != 'SHELF':
                 area_type = _CONTEXTS[target][2]
                 hk_box = layout.box()
                 shared = [v[0] for t, v in _CONTEXTS.items() if v[2] == area_type and t != target]
