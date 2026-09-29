@@ -581,6 +581,21 @@ class BLENDERSHELF_command_param(bpy.types.PropertyGroup):
     value: bpy.props.StringProperty(name="Value", default="")
 
 
+class BLENDERSHELF_placement(bpy.types.PropertyGroup):
+    # .name = context target key (see _CONTEXTS). Not used for 'SHELF'.
+    top_margin: bpy.props.IntProperty(name="Top Margin", default=DEFAULT_TOP_MARGIN, min=0,
+                                       update=lambda self, context: _on_prefs_changed())
+    left_margin_pct: bpy.props.FloatProperty(
+        name="Left Margin", default=DEFAULT_LEFT_MARGIN_PCT, min=0.0, max=1.0, subtype='FACTOR',
+        description="Distance from the area's left edge, as a fraction of its width",
+        update=lambda self, context: _on_prefs_changed())
+    orientation: bpy.props.EnumProperty(
+        name="Orientation",
+        items=(('HORIZONTAL', "Horizontal", ""), ('VERTICAL', "Vertical", "")),
+        default='HORIZONTAL',
+        update=lambda self, context: _on_prefs_changed())
+
+
 def get_prefs():
     addon = bpy.context.preferences.addons.get(__name__)
     return addon.preferences if addon else None
@@ -604,6 +619,22 @@ _PIE_TARGETS = {
     'PIE_NODE_SHADER': ("pie_buttons_node_shader", "pie_active_index_node_shader"),
     'PIE_NODE_GEO': ("pie_buttons_node_geo", "pie_active_index_node_geo"),
 }
+# Every list is a per-context shelf; the pie menu mirrors the current
+# context's list. The `pie_buttons_*` / `pie_context_*` names are legacy from
+# when these were pie-only lists -- kept as-is (renaming would need a config
+# migration for no user-visible gain).
+# target -> (label, prefs flag that enables it (None = always on), area type)
+_CONTEXTS = {
+    'SHELF': ("Object Mode", None, 'VIEW_3D'),
+    'PIE_EDIT': ("Edit Mode", "pie_context_edit", 'VIEW_3D'),
+    'PIE_SCULPT': ("Sculpt Mode", "pie_context_sculpt", 'VIEW_3D'),
+    'PIE_UV': ("UV Editor", "pie_context_uv", 'IMAGE_EDITOR'),
+    'PIE_NODE_SHADER': ("Shader Editor", "pie_context_node_shader", 'NODE_EDITOR'),
+    'PIE_NODE_GEO': ("Geometry Nodes", "pie_context_node_geo", 'NODE_EDITOR'),
+}
+_CONTEXT_ITEMS = tuple((k, v[0], "") for k, v in _CONTEXTS.items())
+_SHELF_AREA_TYPES = ('VIEW_3D', 'IMAGE_EDITOR', 'NODE_EDITOR')
+
 _TARGET_LABELS = {
     'SHELF': "Shelf",
     'PIE_OBJECT': "Pie: Object Mode",
@@ -619,6 +650,53 @@ _TARGET_ITEMS = tuple((k, v, "") for k, v in _TARGET_LABELS.items())
 def _target_collection(prefs, target):
     coll_name, idx_name = _PIE_TARGETS[target]
     return getattr(prefs, coll_name), idx_name
+
+
+def _enabled_targets(prefs):
+    return [t for t, (_label, flag, _area) in _CONTEXTS.items() if flag is None or getattr(prefs, flag)]
+
+
+def _context_target(area, mode, prefs):
+    """Which shelf list applies to this area/mode, or None if no shelf lives
+    there. In the 3D Viewport Edit/Sculpt fall back to the Object shelf until
+    they have their own enabled; UV/Node editors draw nothing until enabled."""
+    if area is None or prefs is None:
+        return None
+    if area.type == 'VIEW_3D':
+        if mode == 'SCULPT' and prefs.pie_context_sculpt:
+            return 'PIE_SCULPT'
+        if mode == 'EDIT_MESH' and prefs.pie_context_edit:
+            return 'PIE_EDIT'
+        return 'SHELF'
+    if area.type == 'IMAGE_EDITOR':
+        return 'PIE_UV' if area.ui_type == 'UV' and prefs.pie_context_uv else None
+    if area.type == 'NODE_EDITOR':
+        tree = getattr(area.spaces.active, "tree_type", "")
+        if tree == 'ShaderNodeTree' and prefs.pie_context_node_shader:
+            return 'PIE_NODE_SHADER'
+        if tree == 'GeometryNodeTree' and prefs.pie_context_node_geo:
+            return 'PIE_NODE_GEO'
+    return None
+
+
+def _ensure_placements(prefs):
+    for target in _CONTEXTS:
+        if target != 'SHELF' and prefs.placements.get(target) is None:
+            prefs.placements.add().name = target
+
+
+def _placement(prefs, target):
+    """Object holding top_margin / left_margin_pct / orientation for a
+    context. The Object shelf keeps those three directly on prefs (no data
+    change for it); every other context has a BLENDERSHELF_placement entry.
+    Same attribute names either way, so callers don't branch."""
+    if target == 'SHELF':
+        return prefs
+    entry = prefs.placements.get(target)
+    if entry is None:
+        _ensure_placements(prefs)
+        entry = prefs.placements.get(target)
+    return entry
 
 
 def _tag_viewports_redraw():
@@ -800,6 +878,7 @@ def _config_to_dict(prefs):
         "orientation": prefs.orientation,
         "display_mode": prefs.display_mode,
         "pie_mode": prefs.pie_mode,
+        "pie_context_edit": prefs.pie_context_edit,
         "pie_context_sculpt": prefs.pie_context_sculpt,
         "pie_context_uv": prefs.pie_context_uv,
         "pie_context_node_shader": prefs.pie_context_node_shader,
@@ -811,6 +890,8 @@ def _config_to_dict(prefs):
         "pie_buttons_uv": _serialize_items(prefs.pie_buttons_uv),
         "pie_buttons_node_shader": _serialize_items(prefs.pie_buttons_node_shader),
         "pie_buttons_node_geo": _serialize_items(prefs.pie_buttons_node_geo),
+        "placements": {p.name: {"top_margin": p.top_margin, "left_margin_pct": p.left_margin_pct,
+                                "orientation": p.orientation} for p in prefs.placements},
     }
 
 
@@ -896,6 +977,14 @@ def _load_config_from_path(prefs, path):
         prefs.orientation = data.get("orientation", 'HORIZONTAL')
         prefs.display_mode = data.get("display_mode", 'BOTH')
         prefs.pie_mode = data.get("pie_mode", 'MIRROR')
+        prefs.pie_context_edit = data.get("pie_context_edit", False)
+        _ensure_placements(prefs)
+        for name, d in data.get("placements", {}).items():
+            if name in _CONTEXTS and name != 'SHELF':
+                p = _placement(prefs, name)
+                p.top_margin = d.get("top_margin", DEFAULT_TOP_MARGIN)
+                p.left_margin_pct = d.get("left_margin_pct", DEFAULT_LEFT_MARGIN_PCT)
+                p.orientation = d.get("orientation", 'HORIZONTAL')
         prefs.pie_context_sculpt = data.get("pie_context_sculpt", False)
         prefs.pie_context_uv = data.get("pie_context_uv", False)
         prefs.pie_context_node_shader = data.get("pie_context_node_shader", False)
@@ -1681,6 +1770,9 @@ class BlenderShelfPreferences(bpy.types.AddonPreferences):
     pie_active_index_node_shader: bpy.props.IntProperty(default=0)
     pie_buttons_node_geo: bpy.props.CollectionProperty(type=BLENDERSHELF_button_item)
     pie_active_index_node_geo: bpy.props.IntProperty(default=0)
+    pie_context_edit: bpy.props.BoolProperty(name="Edit Mode", default=False,
+                                              update=lambda self, context: _on_prefs_changed())
+    placements: bpy.props.CollectionProperty(type=BLENDERSHELF_placement)
     pie_context_sculpt: bpy.props.BoolProperty(name="Sculpt Mode", default=False,
                                                 update=lambda self, context: _on_prefs_changed())
     pie_context_uv: bpy.props.BoolProperty(name="UV Editor", default=False,
@@ -3271,6 +3363,7 @@ classes = (
     BLENDERSHELF_OT_add_roundcube,
     BLENDERSHELF_button_item,
     BLENDERSHELF_command_param,
+    BLENDERSHELF_placement,
     BLENDERSHELF_UL_buttons,
     BlenderShelfPreferences,
     BLENDERSHELF_OT_pref_add,
@@ -3315,6 +3408,7 @@ def register():
             pass
     prefs = get_prefs()
     if prefs is not None:
+        _ensure_placements(prefs)
         if not _load_config(prefs):
             _seed_default_buttons(prefs)
             _save_config()
