@@ -1,7 +1,7 @@
 bl_info = {
     "name": "BlenderShelf",
     "author": "DenisZakharov",
-    "version": (0, 2, 3),
+    "version": (0, 2, 4),
     "blender": (4, 1, 0),
     "location": "3D Viewport, floating overlay near the top edge",
     "description": "A floating shelf of custom buttons in the 3D viewport (Maya-shelf style)",
@@ -1911,11 +1911,8 @@ class BlenderShelfPreferences(bpy.types.AddonPreferences):
             elif target == 'SHELF':
                 layout.label(text="Edit and Sculpt follow this position while their 'Same position' box is on.")
             # Position and flip are set interactively (drag handle / chevron on
-            # the shelf itself), so only the reset lives here, tucked away.
-            pos_header, pos_panel = layout.panel(f"blendershelf_position_{target}", default_closed=True)
-            pos_header.label(text=f"{label} shelf position")
-            if pos_panel:
-                pos_panel.operator("blender_shelf.pref_preset_position").target = target
+            # the shelf itself), so only the reset lives here.
+            layout.operator("blender_shelf.pref_preset_position").target = target
             layout.row().prop(entry, "display_mode", expand=True)
             if entry.display_mode == 'PIE':
                 layout.label(text="(falls back to the shelf if no key is assigned below)", icon='INFO')
