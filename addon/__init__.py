@@ -1,7 +1,7 @@
 bl_info = {
     "name": "BlenderShelf",
     "author": "DenisZakharov",
-    "version": (0, 2, 1),
+    "version": (0, 2, 2),
     "blender": (4, 1, 0),
     "location": "3D Viewport, floating overlay near the top edge",
     "description": "A floating shelf of custom buttons in the 3D viewport (Maya-shelf style)",
@@ -960,6 +960,7 @@ def _config_to_dict(prefs):
         "show_number": prefs.show_number,
         "show_export_button": prefs.show_export_button,
         "label_placement": prefs.label_placement,
+        "label_placement_v": prefs.label_placement_v,
         "orientation": prefs.orientation,
         "display_mode": prefs.display_mode,
         "pie_context_edit": prefs.pie_context_edit,
@@ -1059,6 +1060,7 @@ def _load_config_from_path(prefs, path):
         prefs.show_number = data.get("show_number", True)
         prefs.show_export_button = data.get("show_export_button", True)
         prefs.label_placement = data.get("label_placement", 'INSIDE')
+        prefs.label_placement_v = data.get("label_placement_v", prefs.label_placement)
         prefs.orientation = data.get("orientation", 'HORIZONTAL')
         prefs.display_mode = data.get("display_mode", 'BOTH')
         prefs.pie_context_edit = data.get("pie_context_edit", False)
@@ -1800,6 +1802,14 @@ class BLENDERSHELF_UL_buttons(bpy.types.UIList):
         row.prop(item, "label", text="", emboss=False)
 
 
+_LABEL_PLACEMENT_ITEMS = (
+    ('ABOVE', "Above", "Label drawn above the button"),
+    ('LEFT', "Left", "Label drawn to the left of the button"),
+    ('INSIDE', "Inside", "Label drawn inside the button, at the bottom"),
+    ('RIGHT', "Right", "Label drawn to the right of the button"),
+    ('BELOW', "Below", "Label drawn below the button"))
+
+
 class BlenderShelfPreferences(bpy.types.AddonPreferences):
     bl_idname = __name__
 
@@ -1862,12 +1872,13 @@ class BlenderShelfPreferences(bpy.types.AddonPreferences):
     show_export_button: bpy.props.BoolProperty(name="Show FBX Export Button", default=False,
                                                 update=lambda self, context: _on_prefs_changed())
     label_placement: bpy.props.EnumProperty(
-        name="Label Placement",
-        items=(('ABOVE', "Above", "Label drawn above the button"),
-               ('LEFT', "Left", "Label drawn to the left of the button"),
-               ('INSIDE', "Inside", "Label drawn inside the button, at the bottom"),
-               ('RIGHT', "Right", "Label drawn to the right of the button"),
-               ('BELOW', "Below", "Label drawn below the button")),
+        name="Label Placement (Horizontal)",
+        items=_LABEL_PLACEMENT_ITEMS,
+        default='INSIDE',
+        update=lambda self, context: _on_prefs_changed())
+    label_placement_v: bpy.props.EnumProperty(
+        name="Label Placement (Vertical)",
+        items=_LABEL_PLACEMENT_ITEMS,
         default='INSIDE',
         update=lambda self, context: _on_prefs_changed())
     orientation: bpy.props.EnumProperty(
@@ -1925,7 +1936,9 @@ class BlenderShelfPreferences(bpy.types.AddonPreferences):
             row = label_box.row()
             row.prop(self, "show_label")
             row.prop(self, "label_font_size")
-            label_box.row().prop(self, "label_placement", expand=True)
+            label_box.row().prop(
+                self, "label_placement_v" if self.orientation == 'VERTICAL' else "label_placement",
+                expand=True)
 
             row = panel.row()
             row.prop(self, "label_color")
@@ -2937,7 +2950,9 @@ def draw_shelf():
     if show_label:
         label_font_size = prefs.label_font_size if prefs else 7
         label_color = prefs.label_color if prefs else (1.0, 1.0, 1.0, 0.9)
-        label_placement = prefs.label_placement if prefs else 'INSIDE'
+        label_placement = 'INSIDE'
+        if prefs:
+            label_placement = prefs.label_placement_v if _is_vertical() else prefs.label_placement
         blf.size(font_id, label_font_size)
         blf.color(font_id, *label_color)
         line_h = label_font_size + 2
