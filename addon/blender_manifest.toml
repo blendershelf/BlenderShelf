@@ -3,7 +3,7 @@ schema_version = "1.0.0"
 id = "blender_shelf"
 version = "0.2.2"
 name = "BlenderShelf"
-tagline = "Floating Maya-shelf-style toolbar for the 3D Viewport"
+tagline = "Custom button shelf for the 3D Viewport, UV and node editors"
 maintainer = "DenisZakharov"
 type = "add-on"
 
