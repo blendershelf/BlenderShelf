@@ -1,0 +1,13 @@
+{
+  "_source": "Matches the BlenderShelf website's design tokens (site/assets/style.css :root), not the Blender UI theme anymore -- guide restyled 2026-09-26 to look like blendershelf.github.io.",
+  "bg_darkest": [13, 11, 10],
+  "bg_panel": [24, 21, 15],
+  "bg_box": [33, 29, 23],
+  "border": [42, 38, 32],
+  "border_strong": [60, 54, 48],
+  "text_primary": [153, 152, 159],
+  "text_bright": [242, 241, 238],
+  "text_muted": [153, 152, 159],
+  "accent_orange": [245, 121, 42],
+  "accent_hover": [255, 146, 72]
+}

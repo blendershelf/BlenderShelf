@@ -1,0 +1,120 @@
+{
+  "lang": "en",
+  "title": "BlenderShelf",
+  "subtitle": "Quick user guide",
+  "footer_text": "BlenderShelf — user guide",
+  "hero_image": "screenshots/19_shelf_horizontal_full.png",
+  "sections": [
+    {
+      "heading": "What it is",
+      "paragraphs": [
+        "A floating panel of buttons over Blender's editors, Maya-shelf style. Every mode and editor has its own shelf with its own buttons: Object Mode, Edit Mode, Sculpt Mode, UV Editor, Shader Editor, Geometry Nodes. Each shelf can be shown as a panel, as a radial pie menu on a hotkey, or both. Each button runs its own Python code on click."
+      ],
+      "image": null
+    },
+    {
+      "heading": "Orientation and moving the shelf",
+      "paragraphs": [
+        "To the left of the panel: \">\" toggles horizontal/vertical, and the three-dot handle drags with the mouse. Position is saved automatically."
+      ],
+      "image": "screenshots/27_shelf_orientation_closeup.png",
+      "image_caption": "The \">\" toggle and drag handle to the left of the panel"
+    },
+    {
+      "heading": "A shelf for every context",
+      "paragraphs": [
+        "In Preferences, the context switcher chooses which shelf you are configuring: the main Shelf (Object Mode), or Sculpt, UV, Shader, Geometry Nodes. Each context has its own enable checkbox, button list, display mode and position.",
+        "For Edit Mode and Sculpt Mode, \"Same position as Object Mode\" is on by default, so the shelf does not jump when you switch modes in the 3D viewport. Untick it to place the shelf separately.",
+        "\"Reset Position\" puts the shelf back at the default spot, top center."
+      ],
+      "image": "screenshots/28_prefs_context_switcher.png",
+      "image_caption": "Context switcher, Enable, Reset Position"
+    },
+    {
+      "heading": "Display mode and hotkey",
+      "paragraphs": [
+        "Each context has a mode: Shelf (panel only), Pie (pie menu only) or Both.",
+        "The pie menu always mirrors the shelf of the current context: in Edit Mode it shows the Edit shelf's buttons, in the UV Editor the UV shelf's. Button order matches the order in the settings list.",
+        "The hotkey is assigned per editor: the 3D viewport (shared by Object, Edit and Sculpt Mode), the UV Editor, and the Node Editor (shared by the Shader Editor and Geometry Nodes). You can use the same hotkey for every pie menu, or assign different ones."
+      ],
+      "image": "screenshots/29_prefs_pie_hotkey.png",
+      "image_caption": "Shelf / Pie / Both mode and the pie hotkey",
+      "image_max_h": 110
+    },
+    {
+      "heading": "The pie menu in the viewport",
+      "paragraphs": [
+        "The assigned hotkey opens the radial menu with the buttons of the shelf whose context it was called in."
+      ],
+      "image": "screenshots/20_pie_menu_split_object.png",
+      "image_caption": "The BlenderShelf pie menu (Object Mode)"
+    },
+    {
+      "heading": "Preferences: general settings",
+      "paragraphs": [
+        "The \"Backup & Updates\" box: Export/Import Settings save and load every addon setting as one JSON file, and \"Check for Updates\" checks the website for a newer release and offers a download link.",
+        "The collapsible \"Appearance\" panel applies to every shelf: button size and icon opacity, labels (visibility, font size, color, placement relative to the button), button and background colors, Show Number for ordinal numbers, and Show FBX Export Button for an FBX export button with Selected Only on."
+      ],
+      "image": null
+    },
+    {
+      "heading": "The button list",
+      "paragraphs": [
+        "Below the context settings is that context's button list. Every button has its own card: label, icon, command. The arrows reorder, \"+\" and \"−\" add and remove buttons, and the Show in Pie checkbox leaves a button out of the pie menu."
+      ],
+      "image": null
+    },
+    {
+      "heading": "Editing parameters without Python",
+      "paragraphs": [
+        "\"Edit Parameters\" opens a window where you can edit the parameters a function exposes — for example a cylinder's vertex count, radius and depth — without writing or editing any Python."
+      ],
+      "image": "screenshots/31_edit_parameters_new.png",
+      "image_caption": "Edit Parameters: tweaking a cylinder's parameters without Python",
+      "image_max_h": 330
+    },
+    {
+      "heading": "Adding a function (button) to a shelf",
+      "paragraphs": [
+        "1. \"+\" in the settings list — an empty placeholder, type the command and label yourself.",
+        "2. Right-click any interface button, including third-party addons → \"Add to Shelf\".",
+        "3. Find the function through operator search (F3), then likewise right-click → \"Add to Shelf\"."
+      ],
+      "image_row": [
+        "screenshots/08_add_from_context_menu.png",
+        "screenshots/09_add_from_context_addon.png",
+        "screenshots/10_add_from_context_search.png"
+      ],
+      "image_caption": "\"Add to Shelf\" works from any button's context menu: a built-in operator, a third-party addon button, a search result (F3)"
+    },
+    {
+      "heading": "Choosing a shelf when adding",
+      "paragraphs": [
+        "If several shelves are enabled, \"Add to Shelf\" opens a dialog. It already suggests the shelf that fits the current editor and mode."
+      ],
+      "image": "screenshots/30_add_to_shelf_dialog.png",
+      "image_caption": "The \"Add to Shelf\" dialog: pick the shelf that receives the button"
+    },
+    {
+      "heading": "Icons",
+      "paragraphs": [
+        "Icons are picked automatically for popular tools: the addon ships its own icons for UV operations (Unwrap, Pack, Stitch, Gridify, Straighten, Export Layout and more) and for the main sculpt brushes (Draw, Clay Strips, Grab, Smooth, Inflate and more). If nothing fits, choose your own with the folder button next to the Icon field."
+      ],
+      "image": null
+    },
+    {
+      "heading": "Copying functions between shelves",
+      "paragraphs": [
+        "The \"Copy To...\" button on a function's card copies it to another enabled shelf — for example from Object to Edit. Editing the command in one list does not touch the copy in the other."
+      ],
+      "image": null
+    },
+    {
+      "heading": "What to put in Command",
+      "paragraphs": [
+        "You can add your own script or macro (a sequence of commands), written yourself or with an AI assistant (Claude, ChatGPT, etc.). For longer scripts there are \"Edit as Script\" and \"Apply Script\": the code is edited in Blender's Text Editor. For quickly tweaking a single operator call, \"Edit Parameters\" is easier — no Python editing needed."
+      ],
+      "image": null
+    }
+  ]
+}
