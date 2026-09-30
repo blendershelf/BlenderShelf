@@ -1,7 +1,7 @@
 bl_info = {
     "name": "BlenderShelf",
     "author": "DenisZakharov",
-    "version": (0, 2, 0),
+    "version": (0, 2, 1),
     "blender": (4, 1, 0),
     "location": "3D Viewport, floating overlay near the top edge",
     "description": "A floating shelf of custom buttons in the 3D viewport (Maya-shelf style)",
@@ -127,6 +127,17 @@ def _op_is_modal(op):
         return False
 
 
+def _op_needs_filepath(op):
+    # ExportHelper/ImportHelper operators (e.g. uv.export_layout) get their
+    # path from a file browser opened in invoke(); EXEC leaves filepath empty.
+    try:
+        cls = getattr(bpy.types, op.get_rna_type().identifier, None)
+        return (cls is not None and hasattr(cls, 'invoke')
+                and 'filepath' in op.get_rna_type().properties)
+    except Exception:
+        return False
+
+
 class _ShelfOpsCategory:
     def __init__(self, category):
         self._category = category
@@ -134,7 +145,14 @@ class _ShelfOpsCategory:
     def __getattr__(self, name):
         op = getattr(self._category, name)
         if not _op_is_modal(op):
-            return op
+            if not _op_needs_filepath(op):
+                return op
+
+            def file_wrapper(*args, **kwargs):
+                if 'filepath' in kwargs or (args and isinstance(args[0], str) and args[0] in _OP_CONTEXT_STRS):
+                    return op(*args, **kwargs)
+                return op('INVOKE_DEFAULT', *args, **kwargs)
+            return file_wrapper
 
         def wrapper(*args, **kwargs):
             if args and isinstance(args[0], str) and args[0] in _OP_CONTEXT_STRS:
@@ -243,6 +261,8 @@ class BLENDERSHELF_OT_add_roundcube(bpy.types.Operator):
 # ---------------------------------------------------------------------------
 
 BLENDER_ICON_DIR = os.path.join(ICON_DIR, "blender")
+UV_ICON_DIR = os.path.join(ICON_DIR, "uv")
+BRUSH_ICON_DIR = os.path.join(ICON_DIR, "brush")
 
 # ---------------------------------------------------------------------------
 # Auto-icon lookup: instead of hand-maintaining an operator->icon table, ask
@@ -539,9 +559,30 @@ def _guess_icon_from_label(label):
     return os.path.join(BLENDER_ICON_DIR, best_icon + ".png") if best_icon else None
 
 
+# Blender has no icons for most UV tools, so icons/uv/ holds our own,
+# keyed by operator id (incl. Mio3 UV, which is what the user's shelf uses).
+_UV_OP_ICONS = {
+    "uv.unwrap": "UV_UNWRAP", "uv.smart_project": "UV_SMART_PROJECT",
+    "uv.pack_islands": "UV_PACK", "uv.stitch": "UV_STITCH",
+    "uv.weld": "UV_WELD", "uv.remove_doubles": "UV_WELD", "uv.rip": "UV_RIP",
+    "uv.seams_from_islands": "UV_SEAMS_FROM_ISLANDS",
+    "uv.select_overlap": "UV_SELECT_OVERLAP",
+    "uv.average_islands_scale": "UV_AVERAGE_SCALE",
+    "uv.minimize_stretch": "UV_MINIMIZE_STRETCH",
+    "uv.export_layout": "UV_EXPORT_LAYOUT",
+    "uv.mio3_gridify": "UV_GRIDIFY", "uv.mio3_straight": "UV_STRAIGHTEN",
+}
+
+
+def _uv_icon(op_id):
+    name = _UV_OP_ICONS.get(op_id)
+    return os.path.join(UV_ICON_DIR, name + ".png") if name else None
+
+
 def _resolve_icon(op_id, op, label):
     return (
-        _icon_from_type_prop(op_id, op)
+        _uv_icon(op_id)
+        or _icon_from_type_prop(op_id, op)
         or _lookup_icon_for_operator(op_id)
         or _concept_icon_from_label(label)
         or _guess_icon_from_label(label)
@@ -2075,7 +2116,22 @@ def _activate_brush_icon(op):
     # A fixed, real "brush" icon from the addon's own curated pack (pulled
     # from the same nikogoli/Blender_UI_icons_png set the rest of the pack
     # already uses) is simpler and always available.
+    # Our own per-brush icons (icons/brush/) for the common sculpt brushes,
+    # matched by brush name; anything else keeps the generic icon.
+    for part in _activate_brush_label(op).lower().split("/"):
+        name = _BRUSH_ICONS.get(part.strip())
+        if name:
+            return os.path.join(BRUSH_ICON_DIR, name + ".png")
     return os.path.join(BLENDER_ICON_DIR, "BRUSH_DATA.png")
+
+
+_BRUSH_ICONS = {
+    "draw": "DRAW", "draw sharp": "DRAW_SHARP", "clay": "CLAY",
+    "clay strips": "CLAY_STRIPS", "layer": "LAYER", "crease": "CREASE",
+    "inflate": "INFLATE", "blob": "BLOB", "pinch": "PINCH", "magnify": "PINCH",
+    "smooth": "SMOOTH", "flatten": "FLATTEN", "contrast": "FLATTEN",
+    "grab": "GRAB", "snake hook": "SNAKE_HOOK", "mask": "MASK",
+}
 
 
 def _mark_sharp_label(op):
