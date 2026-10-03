@@ -4,6 +4,12 @@ blender-icons.7z
 blender-icons/
 __pycache__/
 *.pyc
-worker/.wrangler/
+.wrangler/
 .impeccable/review/
 .impeccable/hook.cache.json
+
+# large local media and regenerable outputs (never committed; GitHub rejects files over 100 MB)
+assets/
+guide/Video/
+guide/preview/
+guide/BlenderShelf_Guide_*.pdf
