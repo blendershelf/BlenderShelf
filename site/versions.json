@@ -8,5 +8,6 @@
   { "addon_version": "0.1.6", "blender_min": "4.1.0", "blender_max": null, "url": "https://github.com/blendershelf/BlenderShelf/releases/download/v0.1.6/BlenderShelf.zip" },
   { "addon_version": "0.1.7", "blender_min": "4.1.0", "blender_max": null, "url": "https://github.com/blendershelf/BlenderShelf/releases/download/v0.1.7/BlenderShelf.zip" },
   { "addon_version": "0.2.1", "blender_min": "4.1.0", "blender_max": null, "url": "https://github.com/blendershelf/BlenderShelf/releases/download/v0.2.1/BlenderShelf.zip" },
-  { "addon_version": "0.2.2", "blender_min": "4.1.0", "blender_max": null, "url": "https://github.com/blendershelf/BlenderShelf/releases/download/v0.2.2/BlenderShelf.zip" }
+  { "addon_version": "0.2.2", "blender_min": "4.1.0", "blender_max": null, "url": "https://github.com/blendershelf/BlenderShelf/releases/download/v0.2.2/BlenderShelf.zip" },
+  { "addon_version": "0.3.0", "blender_min": "4.1.0", "blender_max": null, "url": "https://github.com/blendershelf/BlenderShelf/releases/download/v0.3.0/BlenderShelf.zip" }
 ]

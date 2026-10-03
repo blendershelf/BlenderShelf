@@ -1,7 +1,7 @@
 bl_info = {
     "name": "BlenderShelf",
     "author": "DenisZakharov",
-    "version": (0, 2, 2),
+    "version": (0, 3, 0),
     "blender": (4, 1, 0),
     "location": "3D Viewport, floating overlay near the top edge",
     "description": "A floating shelf of custom buttons in the 3D viewport (Maya-shelf style)",
@@ -527,6 +527,9 @@ _CONCEPT_ICONS = (
     (("unlink",), "UNLINKED"),
     (("link",), "LINKED"),
     (("group",), "GROUP"),
+    (("remesh", "remesher", "voxel"), "MOD_REMESH"),
+    (("rename", "renamer", "naming"), "FONT_DATA"),
+    (("loop", "loops", "edgeloop"), "EDGESEL"),
 )
 
 
@@ -1291,6 +1294,123 @@ class BLENDERSHELF_OT_add_separator(bpy.types.Operator):
         return {'FINISHED'}
 
 
+_script_watch = {}  # text block name -> (target, button index) awaiting a paste
+
+
+def _script_text_visible(txt):
+    for win in bpy.context.window_manager.windows:
+        for area in win.screen.areas:
+            if area.type == 'TEXT_EDITOR' and area.spaces.active.text == txt:
+                return True
+    return False
+
+
+def _script_watch_tick():
+    # Copies a watched Text block into its button's command as soon as it has
+    # content. A watch ends once the button has a command AND the block is no
+    # longer open in any Text Editor, so the timer is idle in normal use.
+    prefs = get_prefs()
+    for name, (target, idx) in list(_script_watch.items()):
+        txt = bpy.data.texts.get(name)
+        coll = _target_collection(prefs, target)[0] if prefs else None
+        if txt is None or coll is None or idx >= len(coll) or                 _button_script_name(target, idx, coll[idx].label) != name:
+            del _script_watch[name]  # block deleted, or button moved/renamed/removed
+            continue
+        item = coll[idx]
+        src = txt.as_string()
+        if src.strip() and src != item.command:
+            item.command = src
+            if item.icon_path == _DEFAULT_SCRIPT_ICON:  # never override a manual pick
+                item.icon_path = _icon_for_script(item.label, src) or item.icon_path
+            _save_prefs()
+        if item.command and not _script_text_visible(txt):
+            del _script_watch[name]
+    return 0.5 if _script_watch else None
+
+
+def _watch_script(target, idx, label):
+    _script_watch[_button_script_name(target, idx, label)] = (target, idx)
+    if not bpy.app.timers.is_registered(_script_watch_tick):
+        bpy.app.timers.register(_script_watch_tick, first_interval=0.5)
+
+
+_DEFAULT_SCRIPT_ICON = os.path.join(BLENDER_ICON_DIR, "MESH_MONKEY.png")
+
+
+def _icon_for_script(label, src):
+    """Best-guess icon for a script button: an explicit `# icon: NAME` tag in
+    the first lines, else the first bpy.ops.* call we have an icon for, else
+    the label (skipped for the "New Script" placeholder). None if nothing fits."""
+    m = re.search(r"^\s*#\s*icon\s*:\s*(\w+)", "\n".join(src.splitlines()[:10]), re.I | re.M)
+    if m:
+        for folder in (BLENDER_ICON_DIR, UV_ICON_DIR):
+            path = os.path.join(folder, m.group(1) + ".png")
+            if os.path.exists(path):
+                return path
+    for cat, name in re.findall(r"bpy\.ops\.(\w+)\.(\w+)", src):
+        op_id = f"{cat}.{name}"
+        # the Add-menu map is only trustworthy for *_add operators; for utility
+        # calls like mesh.select_all it returns an unrelated icon
+        icon = _uv_icon(op_id) or (_lookup_icon_for_operator(op_id) if name.endswith("_add") else None)
+        if icon:
+            return icon
+    if label and label != "New Script":
+        return _concept_icon_from_label(label)  # no fuzzy guess: wrong icon is worse than the default
+    return None
+
+
+def _add_script_button(prefs, target, label, command=""):
+    coll, idx_attr = _target_collection(prefs, target)
+    item = coll.add()
+    item.label = label
+    item.icon_path = (command and _icon_for_script(label, command)) or _DEFAULT_SCRIPT_ICON
+    item.command = command
+    setattr(prefs, idx_attr, len(coll) - 1)
+    _save_prefs()
+    return len(coll) - 1
+
+
+class BLENDERSHELF_OT_add_script(bpy.types.Operator):
+    """Add an empty button and open its script in a Text Editor; whatever is
+    pasted there becomes the button's command automatically"""
+    bl_idname = "blender_shelf.add_script"
+    bl_label = "Add Script"
+    target: bpy.props.EnumProperty(items=_TARGET_ITEMS, default='SHELF')
+
+    def execute(self, context):
+        prefs = get_prefs()
+        idx = _add_script_button(prefs, self.target, "New Script")
+        bpy.ops.blender_shelf.edit_script(target=self.target)
+        _watch_script(self.target, idx, "New Script")
+        self.report({'INFO'}, "Paste your script into the Text Editor -- it is applied automatically.")
+        return {'FINISHED'}
+
+
+class BLENDERSHELF_OT_import_script(bpy.types.Operator):
+    """Create a button whose command is the content of a .py file"""
+    bl_idname = "blender_shelf.import_script"
+    bl_label = "Import Script (.py)"
+    target: bpy.props.EnumProperty(items=_TARGET_ITEMS, default='SHELF')
+    filepath: bpy.props.StringProperty(subtype='FILE_PATH')
+    filter_glob: bpy.props.StringProperty(default="*.py", options={'HIDDEN'})
+
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        try:
+            with open(self.filepath, encoding='utf-8') as f:
+                src = f.read()
+        except (OSError, UnicodeDecodeError) as e:
+            self.report({'ERROR'}, f"Can't read script: {e}")
+            return {'CANCELLED'}
+        label = os.path.splitext(os.path.basename(self.filepath))[0]
+        _add_script_button(get_prefs(), self.target, label, src)
+        self.report({'INFO'}, f"Imported '{label}' ({len(src)} chars)")
+        return {'FINISHED'}
+
+
 class BLENDERSHELF_MT_shelf_button_context(bpy.types.Menu):
     """Right-click menu for a single shelf button (viewport overlay, not the
     Preferences list). Relies on the caller having already pointed the
@@ -1305,6 +1425,9 @@ class BLENDERSHELF_MT_shelf_button_context(bpy.types.Menu):
         # without this, Delete's own invoke_confirm() is silently skipped
         # and it deletes immediately (confirmed live: this exact symptom).
         layout.operator_context = 'INVOKE_DEFAULT'
+        layout.operator("blender_shelf.add_script", text="Add Script", icon='TEXT').target = target
+        layout.operator("blender_shelf.import_script", text="Import Script (.py)", icon='IMPORT').target = target
+        layout.separator()
         layout.operator("blender_shelf.start_move_button", text="Move", icon='ARROW_LEFTRIGHT').target = target
         layout.operator("blender_shelf.add_separator", text="Add Separator", icon='REMOVE').target = target
         layout.separator()
@@ -1746,19 +1869,27 @@ def _get_pie_icon_id(path):
 _PIE_CLOCKWISE_ORDER = (3, 5, 1, 7, 2, 6, 0, 4)  # N, NE, E, SE, S, SW, W, NW
 
 
-def _draw_pie_slots(pie, items):
+def _draw_pie_slots(pie, items, more_menu=None):
     # menu_pie() always fills slots in this fixed compass order:
     # W, E, S, N, NW, NE, SW, SE. Remap so item 1 lands at the top and the
     # rest follow clockwise -- close to a reading order instead of
     # Blender's raw W/E/S/N sequence -- and spell out the number too, since
     # the compass layout alone still won't match a left-to-right (or
     # vertical) list exactly.
+    # more_menu: idname of the next pie page. It takes the last slot, so this
+    # page shows 7 buttons instead of 8.
     slots = [None] * 8
-    for pos, (idx, item) in enumerate(items[:8]):
+    for pos, (idx, item) in enumerate(items[:7 if more_menu else 8]):
         slots[_PIE_CLOCKWISE_ORDER[pos]] = (idx, item)
+    if more_menu:
+        slots[_PIE_CLOCKWISE_ORDER[7]] = "MORE"
     for slot in slots:
         if slot is None:
             pie.separator()
+            continue
+        if slot == "MORE":
+            # pie.menu() would open a plain dropdown; a nested pie needs the operator
+            pie.operator("wm.call_menu_pie", text="More", icon='TRIA_RIGHT').name = more_menu
             continue
         idx, item = slot
         text = f"{idx + 1}. {item.label}"
@@ -1771,25 +1902,48 @@ def _draw_pie_slots(pie, items):
         op.label = item.label
 
 
+_PIE_PAGES = 4  # page 0 is BLENDERSHELF_MT_pie; each full page holds 7 + a "More" slot
+
+
+def _pie_page_idname(page):
+    return "BLENDERSHELF_MT_pie" if page == 0 else f"BLENDERSHELF_MT_pie_p{page + 1}"
+
+
+def _draw_pie_page(pie, context, page):
+    prefs = get_prefs()
+    if prefs is None:
+        return
+    target = _context_target(context.area, context.mode, prefs) or 'SHELF'
+    if _context_entry(prefs, target).display_mode == 'SHELF':
+        pie.label(text=f"Pie menu is off for {_TARGET_LABELS[target]} (set Shelf + Pie in its settings)", icon='INFO')
+        return
+    coll, _ = _target_collection(prefs, target)
+    items = [(i, b) for i, b in enumerate(coll) if b.enabled and b.show_in_pie]
+    if not items:
+        pie.label(text="Not configured yet", icon='INFO')
+        return
+    items = items[page * 7:]
+    more = _pie_page_idname(page + 1) if len(items) > 8 and page + 1 < _PIE_PAGES else None
+    _draw_pie_slots(pie, items, more)
+
+
 class BLENDERSHELF_MT_pie(bpy.types.Menu):
     bl_idname = "BLENDERSHELF_MT_pie"
     bl_label = "BlenderShelfPie"
 
     def draw(self, context):
-        pie = self.layout.menu_pie()
-        prefs = get_prefs()
-        if prefs is None:
-            return
-        target = _context_target(context.area, context.mode, prefs) or 'SHELF'
-        if _context_entry(prefs, target).display_mode == 'SHELF':
-            pie.label(text=f"Pie menu is off for {_TARGET_LABELS[target]} (set Shelf + Pie in its settings)", icon='INFO')
-            return
-        coll, _ = _target_collection(prefs, target)
-        items = [(i, b) for i, b in enumerate(coll) if b.enabled and b.show_in_pie]
-        if not items:
-            pie.label(text="Not configured yet", icon='INFO')
-            return
-        _draw_pie_slots(pie, items)
+        _draw_pie_page(self.layout.menu_pie(), context, 0)
+
+
+def _make_pie_page(page):
+    return type(f"BLENDERSHELF_MT_pie_p{page + 1}", (bpy.types.Menu,), {
+        "bl_idname": _pie_page_idname(page),
+        "bl_label": "BlenderShelfPie",
+        "draw": lambda self, context: _draw_pie_page(self.layout.menu_pie(), context, page),
+    })
+
+
+_pie_page_classes = tuple(_make_pie_page(p) for p in range(1, _PIE_PAGES))
 
 
 class BLENDERSHELF_UL_buttons(bpy.types.UIList):
@@ -2605,6 +2759,52 @@ def drag_handle_rect(region):
     return drag_rect
 
 
+def resize_corner_rect(region):
+    # hit zone at the panel's bottom-right corner (bottom-left when vertical)
+    x, y, panel_w, _, _ = shelf_geometry(region)
+    h = _pad_size() * 1.4
+    if _is_vertical():
+        return x, y, x + h, y + h
+    return x + panel_w - h, y, x + panel_w, y + h
+
+
+def _draw_resize_corner(shader, region, color):
+    # thin arc hugging the panel's rounded bottom-right corner, with short
+    # tails running along both edges. One triangle strip, so a translucent
+    # colour doesn't double up where segments would overlap.
+    x, y, panel_w, _, _ = shelf_geometry(region)
+    y0 = y
+    r, t = PANEL_RADIUS, 3.0
+    tail = _pad_size() * 0.35
+    if _is_vertical():
+        x0 = x
+        cx, cy = x0 + r, y0 + r
+        pts = [((x0, cy + tail), (x0 + t, cy + tail))]
+        for s in range(_ROUND_SEGMENTS * 2 + 1):
+            a = math.radians(180 + 90 * s / (_ROUND_SEGMENTS * 2))
+            ca, sa = math.cos(a), math.sin(a)
+            pts.append(((cx + r * ca, cy + r * sa), (cx + (r - t) * ca, cy + (r - t) * sa)))
+        pts.append(((cx + tail, y0), (cx + tail, y0 + t)))
+    else:
+        x1 = x + panel_w
+        cx, cy = x1 - r, y0 + r
+        pts = [((cx - tail, y0), (cx - tail, y0 + t))]
+        for s in range(_ROUND_SEGMENTS * 2 + 1):
+            a = math.radians(-90 + 90 * s / (_ROUND_SEGMENTS * 2))
+            ca, sa = math.cos(a), math.sin(a)
+            pts.append(((cx + r * ca, cy + r * sa), (cx + (r - t) * ca, cy + (r - t) * sa)))
+        pts.append(((x1, cy + tail), (x1 - t, cy + tail)))
+    verts = [v for pair in pts for v in pair]
+    indices = []
+    for i in range(len(pts) - 1):
+        a, b = 2 * i, 2 * i + 2
+        indices += [(a, a + 1, b), (a + 1, b + 1, b)]
+    batch = batch_for_shader(shader, 'TRIS', {"pos": verts}, indices=indices)
+    shader.bind()
+    shader.uniform_float("color", color)
+    batch.draw(shader)
+
+
 def _quad(shader, x0, y0, x1, y1, color):
     verts = ((x0, y0), (x1, y0), (x1, y1), (x0, y1))
     batch = batch_for_shader(shader, 'TRIS', {"pos": verts}, indices=((0, 1, 2), (2, 3, 0)))
@@ -2800,6 +3000,8 @@ def draw_shelf():
     orient_hover = _orient_hover and here
     drag_hover = _drag_hover and here
     dragging = _dragging_shelf and here
+    resize_hover = _resize_hover and here
+    resizing = _resizing_shelf and here
     moving_here = _moving_index is not None and _moving_target == _active_target
 
     color_shader = gpu.shader.from_builtin('UNIFORM_COLOR')
@@ -2932,6 +3134,14 @@ def draw_shelf():
         if dragging:
             _border(color_shader, dx0, dy0, dx1, dy1, PRESSED_BORDER, t=1)
         _draw_grip_dots(color_shader, dx0, dy0, dx1, dy1, (1, 1, 1, 0.6))
+
+        if resizing:
+            rcol = PRESSED_BORDER
+        elif resize_hover:
+            rcol = (1, 1, 1, 0.55)
+        else:
+            rcol = (1, 1, 1, 0.12)
+        _draw_resize_corner(color_shader, region, rcol)
     gpu.state.blend_set('NONE')
 
     font_id = 0
@@ -3003,6 +3213,8 @@ def draw_shelf():
                          else "Click: switch to Vertical")
     elif drag_hover or dragging:
         tooltip_text = "Drag to move the shelf"
+    elif resize_hover or resizing:
+        tooltip_text = "Drag to resize the shelf"
     if tooltip_text:
         _draw_tooltip(color_shader, region, tooltip_text, _mouse_x, _mouse_y)
 
@@ -3038,6 +3250,11 @@ _export_pressed = False
 _orient_hover = False
 _drag_hover = False
 _dragging_shelf = False
+_resize_hover = False
+_resizing_shelf = False
+_resize_origin = (0.0, 0.0)  # panel top-left at resize start
+_resize_start_dist = 1.0
+_resize_start_scale = 1.0
 _drag_start_mouse = (0.0, 0.0)
 _drag_start_margins = (0.0, 0.0)
 _drag_live_margins = None  # (top_margin_px, left_margin_px) while dragging, else None
@@ -3087,6 +3304,7 @@ class BLENDERSHELF_OT_modal(bpy.types.Operator):
         global _dragging_shelf, _drag_start_mouse, _drag_start_abs, _drag_start_margins
         global _drag_live_margins, _drag_region_width, _drag_target
         global _last_alive, _restart_requested
+        global _resize_hover, _resizing_shelf, _resize_origin, _resize_start_dist, _resize_start_scale
         global _moving_index, _move_insert_gap
         global _pending_export_selection, _active_target, _active_area_ptr
         _last_alive = time.time()  # proof of life, independent of _modal_running
@@ -3133,7 +3351,16 @@ class BLENDERSHELF_OT_modal(bpy.types.Operator):
                 _tag_viewports_redraw()
                 return {'RUNNING_MODAL'}  # consume the drag, don't also orbit/pan the viewport
 
+            if _resizing_shelf:
+                prefs = get_prefs()
+                if prefs is not None and area is not None:
+                    d = math.hypot(mx - _resize_origin[0], my - _resize_origin[1])
+                    prefs.shelf_scale = max(0.5, min(3.0, _resize_start_scale * d / _resize_start_dist))
+                _tag_viewports_redraw()
+                return {'RUNNING_MODAL'}
+
             new_hover = None
+            new_resize_hover = False
             new_export_hover = False
             new_orient_hover = False
             new_drag_hover = False
@@ -3152,15 +3379,21 @@ class BLENDERSHELF_OT_modal(bpy.types.Operator):
                     new_orient_hover = ox0 <= mx <= ox1 and oy0 <= my <= oy1
                     gx0, gy0, gx1, gy1 = drag_handle_rect(region)
                     new_drag_hover = gx0 <= mx <= gx1 and gy0 <= my <= gy1
+                    rx0, ry0, rx1, ry1 = resize_corner_rect(region)
+                    new_resize_hover = rx0 <= mx <= rx1 and ry0 <= my <= ry1
+                    if new_resize_hover:
+                        new_hover = None
             # redraw on any state change, and continuously while hovering so
             # the tooltip box tracks the cursor
             should_redraw = (new_hover != _hover_index or new_export_hover != _export_hover
                               or new_orient_hover != _orient_hover or new_drag_hover != _drag_hover
+                              or new_resize_hover != _resize_hover
                               or new_hover is not None or new_export_hover or new_orient_hover or new_drag_hover)
             _hover_index = new_hover
             _export_hover = new_export_hover
             _orient_hover = new_orient_hover
             _drag_hover = new_drag_hover
+            _resize_hover = new_resize_hover
             if should_redraw:
                 _tag_viewports_redraw()  # all shelf areas: the previously-hovered one must clear too
             return {'PASS_THROUGH'}
@@ -3203,7 +3436,15 @@ class BLENDERSHELF_OT_modal(bpy.types.Operator):
         if event.type == 'LEFTMOUSE' and event.value == 'PRESS' and area is not None:
             if _should_draw_shelf():
                 items = _enabled_items()
-                _, _, _, _, rects = shelf_geometry(region)
+                x, y, panel_w, panel_h, rects = shelf_geometry(region)
+                rx0, ry0, rx1, ry1 = resize_corner_rect(region)
+                if rx0 <= mx <= rx1 and ry0 <= my <= ry1:
+                    _resizing_shelf = True
+                    _resize_origin = (x, y + panel_h)
+                    _resize_start_dist = max(1.0, math.hypot((rx0 if _is_vertical() else rx1) - x, ry0 - (y + panel_h)))
+                    _resize_start_scale = get_prefs().shelf_scale
+                    _tag_viewports_redraw()
+                    return {'RUNNING_MODAL'}
                 for i, (x0, y0, x1, y1) in enumerate(rects):
                     if x0 <= mx <= x1 and y0 <= my <= y1:
                         _pressed_index = i
@@ -3254,6 +3495,12 @@ class BLENDERSHELF_OT_modal(bpy.types.Operator):
                     return {'RUNNING_MODAL'}
 
             return {'PASS_THROUGH'}
+
+        if event.type == 'LEFTMOUSE' and event.value == 'RELEASE' and _resizing_shelf:
+            _resizing_shelf = False
+            _save_prefs()
+            _tag_viewports_redraw()
+            return {'RUNNING_MODAL'}
 
         if event.type == 'LEFTMOUSE' and event.value == 'RELEASE' and _dragging_shelf:
             _dragging_shelf = False
@@ -3387,6 +3634,8 @@ classes = (
     BLENDERSHELF_MT_shelf_button_context,
     BLENDERSHELF_OT_copy_button,
     BLENDERSHELF_OT_edit_script,
+    BLENDERSHELF_OT_add_script,
+    BLENDERSHELF_OT_import_script,
     BLENDERSHELF_OT_apply_script,
     BLENDERSHELF_OT_edit_params,
     BLENDERSHELF_OT_pref_preset_position,
@@ -3397,6 +3646,7 @@ classes = (
     BLENDERSHELF_OT_import_settings,
     BLENDERSHELF_OT_run_command,
     BLENDERSHELF_MT_pie,
+    *_pie_page_classes,
     BLENDERSHELF_OT_modal,
     BLENDERSHELF_OT_add_from_context,
 )
@@ -3467,8 +3717,12 @@ def unregister():
     global _modal_stop, _hover_index, _pressed_index, _drag_target, _active_area_ptr
     global _export_hover, _export_pressed, _icon_previews
     global _orient_hover, _drag_hover, _dragging_shelf, _drag_live_margins
+    global _resize_hover, _resizing_shelf
     global _moving_index, _move_insert_gap
     _modal_stop = True
+    if bpy.app.timers.is_registered(_script_watch_tick):
+        bpy.app.timers.unregister(_script_watch_tick)
+    _script_watch.clear()
     _hover_index = None
     _pressed_index = None
     _export_hover = False
@@ -3476,6 +3730,7 @@ def unregister():
     _orient_hover = False
     _drag_hover = False
     _dragging_shelf = False
+    _resize_hover = _resizing_shelf = False
     _drag_live_margins = None
     _moving_index = None
     _move_insert_gap = None

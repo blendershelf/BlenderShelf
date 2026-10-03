@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "blender_shelf"
-version = "0.2.2"
+version = "0.3.0"
 name = "BlenderShelf"
 tagline = "Customizable quick-access button shelf for any workflow"
 maintainer = "DenisZakharov"
