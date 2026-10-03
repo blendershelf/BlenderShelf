@@ -9,7 +9,7 @@ __pycache__/
 .impeccable/hook.cache.json
 
 # large local media and regenerable outputs (never committed; GitHub rejects files over 100 MB)
-assets/
+/assets/
 guide/Video/
 guide/preview/
 guide/BlenderShelf_Guide_*.pdf
