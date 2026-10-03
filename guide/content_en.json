@@ -110,6 +110,7 @@
       "heading": "A script on a button",
       "paragraphs": [
         "A button can run a whole Python script, not just one command. Right-click a shelf button to get two new menu items.",
+        "You can write the script yourself or ask an AI assistant to write it: describe what the button should do and paste the code.",
         "\"Add Script\" creates an empty button with the default icon and opens its script in a Text Editor. Paste your code there — a moment later it is written into the button's command automatically, no extra click needed.",
         "\"Import Script (.py)\" creates a button from an existing Python file, named after the file.",
         "The icon is picked automatically: from a \"# icon: NAME\" tag in the first lines of the script, from the first bpy.ops call, or from the name. If nothing fits, the default stays and you can change it by hand.",
