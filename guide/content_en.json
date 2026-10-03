@@ -21,6 +21,15 @@
       "image_caption": "The \">\" toggle and drag handle to the left of the panel"
     },
     {
+      "heading": "Shelf size",
+      "paragraphs": [
+        "A barely visible arc runs along the panel's bottom-right corner (bottom-left in vertical layout). It lights up on hover; hold the left mouse button and drag to resize the shelf: away from the panel's corner makes it larger, toward it smaller. The arc turns orange while you drag. The size is saved — it is the same Shelf Size value as the slider in the settings."
+      ],
+      "image": "screenshots/32_resize_corner_idle.png",
+      "image_caption": "The resize corner (marked with an arrow)",
+      "image_max_h": 130
+    },
+    {
       "heading": "A shelf for every context",
       "paragraphs": [
         "In Preferences, the context switcher chooses which shelf you are configuring: the main Shelf (Object Mode), or Sculpt, UV, Shader, Geometry Nodes. Each context has its own enable checkbox, button list, display mode and position.",
@@ -74,11 +83,13 @@
       "image_max_h": 330
     },
     {
-      "heading": "Adding a function (button) to a shelf",
+      "heading": "Ways to add a function (button) to a shelf",
       "paragraphs": [
         "1. \"+\" in the settings list — an empty placeholder, type the command and label yourself.",
         "2. Right-click any interface button, including third-party addons → \"Add to Shelf\".",
-        "3. Find the function through operator search (F3), then likewise right-click → \"Add to Shelf\"."
+        "3. Find the function through operator search (F3), then likewise right-click → \"Add to Shelf\".",
+        "4. Right-click a shelf button → \"Add Script\": an empty button and a Text Editor to paste a script into.",
+        "5. Right-click a shelf button → \"Import Script (.py)\": a button from an existing Python file (details in \"A script on a button\")."
       ],
       "image_row": [
         "screenshots/08_add_from_context_menu.png",
@@ -94,6 +105,19 @@
       ],
       "image": "screenshots/30_add_to_shelf_dialog.png",
       "image_caption": "The \"Add to Shelf\" dialog: pick the shelf that receives the button"
+    },
+    {
+      "heading": "A script on a button",
+      "paragraphs": [
+        "A button can run a whole Python script, not just one command. Right-click a shelf button to get two new menu items.",
+        "\"Add Script\" creates an empty button with the default icon and opens its script in a Text Editor. Paste your code there — a moment later it is written into the button's command automatically, no extra click needed.",
+        "\"Import Script (.py)\" creates a button from an existing Python file, named after the file.",
+        "The icon is picked automatically: from a \"# icon: NAME\" tag in the first lines of the script, from the first bpy.ops call, or from the name. If nothing fits, the default stays and you can change it by hand.",
+        "The script is copied into the button. If you edit the file on disk afterwards, the button does not update — import it again."
+      ],
+      "image": "screenshots/35_add_script_editor.png",
+      "image_caption": "\"Add Script\": the menu item and the Text Editor where the code is pasted",
+      "image_max_h": 330
     },
     {
       "heading": "Icons",

@@ -222,6 +222,18 @@ section:not(#hero) {
   transition: border-color 0.15s ease-out;
 }
 
+.how-card-wide {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.how-card-wide figure {
+  margin: 0;
+}
+
 .how-card:hover {
   border-color: var(--border-strong);
 }
@@ -552,6 +564,14 @@ footer {
 
   .how-grid {
     grid-template-columns: 1fr;
+  }
+
+  .how-card-wide {
+    grid-template-columns: 1fr;
+  }
+
+  .how-card-wide figure {
+    margin-bottom: 1.1rem;
   }
 }
 
