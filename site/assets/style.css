@@ -378,7 +378,7 @@ select:hover {
 .video-wrap {
   position: relative;
   width: 100%;
-  max-width: 640px;
+  max-width: 960px;
   aspect-ratio: 16 / 9;
   border-radius: var(--radius);
   overflow: hidden;
@@ -617,3 +617,14 @@ footer {
     gap: 1.25rem;
   }
 }
+
+/* video guide: section as wide as the player, note + PDF button centered */
+#guide { max-width: calc(960px + 4rem); text-align: center; }
+#guide h2 { text-align: left; }
+#guide .video-note { margin: -0.75rem auto 1.5rem; }
+
+/* support + feedback: one block, same width as the video guide */
+#guide, #connect { max-width: calc(960px + 4rem); }
+.connect-grid { display: grid; grid-template-columns: 1fr 1.6fr; gap: 3rem; align-items: start; }
+#support .cta { display: flex; justify-content: center; margin-top: 0.75rem; }
+@media (max-width: 720px) { .connect-grid { grid-template-columns: 1fr; gap: 2.5rem; } }
