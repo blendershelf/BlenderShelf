@@ -1,0 +1,91 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>EasyShelf preview</title>
+<style>
+@font-face{font-family:Plex;font-weight:400;src:url(../../guide/fonts/IBMPlexSans-Regular.ttf)}
+@font-face{font-family:Plex;font-weight:500;src:url(../../guide/fonts/IBMPlexSans-Medium.ttf)}
+@font-face{font-family:Plex;font-weight:700;src:url(../../guide/fonts/IBMPlexSans-Bold.ttf)}
+*{box-sizing:border-box;margin:0}
+html,body{width:1920px;height:1080px;overflow:hidden;background:#0d0b0a;font-family:Plex,system-ui,sans-serif;color:#f2f1ee}
+.bg{position:absolute;inset:0;background:
+  radial-gradient(900px 600px at 22% 30%,rgba(245,121,42,.16),transparent 70%),
+  radial-gradient(1100px 800px at 85% 60%,rgba(245,121,42,.08),transparent 70%),
+  linear-gradient(#15120f,#0d0b0a)}
+.floor{position:absolute;left:-40%;right:-40%;bottom:-8%;height:52%;
+  background:
+   repeating-linear-gradient(90deg,rgba(255,255,255,.10) 0 2px,transparent 2px 120px),
+   repeating-linear-gradient(0deg,rgba(255,255,255,.10) 0 2px,transparent 2px 120px);
+  transform:perspective(700px) rotateX(62deg);transform-origin:50% 0;
+  -webkit-mask-image:linear-gradient(#000 0,transparent 85%);mask-image:linear-gradient(#000 0,transparent 85%)}
+.brand{position:absolute;left:120px;top:130px;display:flex;align-items:center;gap:44px}
+.brand img{width:190px;height:190px;border-radius:44px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+.brand h1{font-size:188px;line-height:1;font-weight:700;letter-spacing:-4px}
+.brand h1 b{color:#f5792a}
+.sub{position:absolute;left:124px;top:352px;font-size:52px;font-weight:400;color:#a9a7a2}
+.shelfwrap{position:absolute;left:120px;top:590px;display:flex;gap:20px;align-items:flex-start}
+.aux{display:flex;flex-direction:column;gap:12px}
+.aux div{width:68px;height:68px;border-radius:12px;background:#2a2826;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 10px 30px rgba(0,0,0,.5)}
+.aux svg{width:40px;height:40px}
+.panel{display:flex;gap:12px;padding:16px;background:#3b3937;border-radius:22px;box-shadow:0 24px 70px rgba(0,0,0,.65),inset 0 0 0 2px rgba(255,255,255,.05)}
+.btn{position:relative;width:120px;height:120px;border-radius:14px;background:#191817;box-shadow:inset 0 0 0 2px rgba(255,255,255,.04)}
+.btn img{position:absolute;left:50%;top:44%;width:80px;height:80px;transform:translate(-50%,-50%)}
+.btn i{position:absolute;left:10px;top:6px;font-style:normal;font-size:20px;color:rgba(255,255,255,.75)}
+.btn s{position:absolute;left:0;right:0;bottom:8px;text-align:center;text-decoration:none;font-size:22px;font-weight:500;color:#f5a03a}
+.ctx{position:absolute;left:245px;top:830px;display:flex;gap:14px}
+.ctx span{padding:12px 26px;border-radius:999px;font-size:30px;font-weight:500;color:#a9a7a2;background:#1b1917;border:2px solid #2a2620}
+.ctx span.on{color:#14120f;background:#f5792a;border-color:#f5792a}
+.pie{position:absolute;left:1432px;top:690px}
+.chip{position:absolute;transform:translate(-50%,-50%);display:flex;align-items:center;gap:14px;height:60px;padding:0 18px;border-radius:14px;
+  background:#191817;font-size:28px;font-weight:500;white-space:nowrap;box-shadow:0 14px 40px rgba(0,0,0,.6),inset 0 0 0 2px rgba(255,255,255,.05)}
+.chip img{width:36px;height:36px}
+.chip em{font-style:normal;color:#f5792a;margin-right:-4px}
+.ring{position:absolute;transform:translate(-50%,-50%);width:120px;height:120px;border-radius:50%;border:16px solid #2c2a28;box-shadow:0 0 0 2px rgba(245,121,42,.5),0 0 60px rgba(245,121,42,.35)}
+.vwrap{position:absolute;left:1712px;top:330px;width:152px;display:flex;flex-direction:column;gap:12px}
+.vaux{display:flex;flex-direction:row;gap:12px;justify-content:flex-end}
+.vaux div{width:68px;height:68px;border-radius:12px;background:#2a2826;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+.vaux svg{width:40px;height:40px}
+.vpanel{display:flex;flex-direction:column;gap:12px;padding:16px;background:#3b3937;border-radius:22px;box-shadow:0 24px 70px rgba(0,0,0,.65),inset 0 0 0 2px rgba(255,255,255,.05)}
+</style></head><body>
+<div class="bg"></div><div class="floor"></div>
+<div class="brand"><img src="../logo/easyshelf-icon-256.png"><h1>Easy<b>Shelf</b></h1></div>
+<div class="sub">Customizable quick-access button shelf</div>
+
+<div class="shelfwrap">
+  <div class="aux">
+    <div><svg viewBox="0 0 40 40" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 7l14 13-14 13"/></svg></div>
+    <div><svg viewBox="0 0 40 40" fill="#fff"><circle cx="20" cy="9" r="3.4"/><circle cx="20" cy="20" r="3.4"/><circle cx="20" cy="31" r="3.4"/></svg></div>
+  </div>
+  <div class="panel">
+    <div class="btn"><i>1</i><img src="../../addon/icons/blender/MESH_CUBE.png"><s>Cube</s></div>
+    <div class="btn"><i>2</i><img src="../../addon/icons/blender/MESH_UVSPHERE.png"><s>Sphere</s></div>
+    <div class="btn"><i>3</i><img src="../../addon/icons/blender/MESH_CYLINDER.png"><s>Cyl</s></div>
+    <div class="btn"><i>4</i><img src="../../addon/icons/blender/MOD_BEVEL.png"><s>Bevel</s></div>
+    <div class="btn"><i>5</i><img src="../../addon/icons/blender/MOD_MIRROR.png"><s>Mirror</s></div>
+    <div class="btn"><i>6</i><img src="../../addon/icons/blender/LIGHT_POINT.png"><s>Light</s></div>
+    <div class="btn"><i>7</i><img src="../../addon/icons/blender/OUTLINER_OB_CAMERA.png"><s>Camera</s></div>
+  </div>
+</div>
+<div class="ctx"><span class="on">Object</span><span>Edit</span><span>Sculpt</span><span>UV</span><span>Shader</span><span>Geometry</span></div>
+
+<div class="pie">
+  <div class="ring"></div>
+  <div class="chip" style="left:0;top:-205px"><img src="../../addon/icons/blender/MESH_CUBE.png">1 Cube</div>
+  <div class="chip" style="left:150px;top:-102px"><img src="../../addon/icons/blender/MESH_UVSPHERE.png">2 Sphere</div>
+  <div class="chip" style="left:150px;top:102px"><img src="../../addon/icons/blender/MOD_BEVEL.png">3 Bevel</div>
+  <div class="chip" style="left:0;top:205px"><img src="../../addon/icons/blender/MOD_MIRROR.png">4 Mirror</div>
+  <div class="chip" style="left:-150px;top:102px"><img src="../../addon/icons/blender/LIGHT_POINT.png">5 Light</div>
+  <div class="chip" style="left:-150px;top:-102px"><img src="../../addon/icons/blender/OUTLINER_OB_CAMERA.png">6 Camera</div>
+</div>
+<div class="vwrap">
+  <div class="vaux">
+    <div><svg viewBox="0 0 40 40" fill="#fff"><circle cx="9" cy="20" r="3.4"/><circle cx="20" cy="20" r="3.4"/><circle cx="31" cy="20" r="3.4"/></svg></div>
+    <div><svg viewBox="0 0 40 40" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 14l13 14 13-14"/></svg></div>
+  </div>
+  <div class="vpanel">
+    <div class="btn"><i>1</i><img src="../../addon/icons/blender/MESH_CUBE.png"><s>Cube</s></div>
+    <div class="btn"><i>2</i><img src="../../addon/icons/blender/MOD_BEVEL.png"><s>Bevel</s></div>
+    <div class="btn"><i>3</i><img src="../../addon/icons/blender/MOD_MIRROR.png"><s>Mirror</s></div>
+    <div class="btn"><i>4</i><img src="../../addon/icons/blender/LIGHT_POINT.png"><s>Light</s></div>
+  </div>
+</div>
+</body></html>
