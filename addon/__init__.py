@@ -41,8 +41,15 @@ DEFAULT_TOP_MARGIN = 40
 DEFAULT_LEFT_MARGIN_PCT = 0.03
 PRESET_EDGE_MARGIN = 20
 
+# Rewritten to "easyshelf" by build_extension.py --edition easyshelf. The Extensions
+# Platform edition drops the update checker (updates come from the platform) and the
+# FBX-exporter patch (the ToS forbid tampering with Blender internals / other add-ons).
+EDITION = "blendershelf"
+
+# EDITION-STRIP begin
 VERSIONS_JSON_URL = "https://blendershelf.github.io/BlenderShelf/versions.json"
 DOWNLOAD_PAGE_URL = "https://blendershelf.github.io/BlenderShelf/#download"
+# EDITION-STRIP end
 
 _icon_textures = {}
 
@@ -180,6 +187,9 @@ def _exec_shelf_command(command):
     exec(command, {"bpy": _shelf_bpy, "__name__": "__main__"})
 
 
+_pending_export_selection = None
+
+# EDITION-STRIP begin
 try:
     from io_scene_fbx import ExportFBX as _FBXExportBase
 except ImportError:
@@ -227,6 +237,7 @@ def _unpatch_fbx_export():
     if _FBXExportBase is not None and _fbx_execute_original is not None:
         _FBXExportBase.execute = _fbx_execute_original
     _fbx_execute_original = None
+# EDITION-STRIP end
 
 
 class BLENDERSHELF_OT_add_roundcube(bpy.types.Operator):
@@ -984,6 +995,28 @@ def _config_to_dict(prefs):
     }
 
 
+def _import_blendershelf_config(path):
+    """EasyShelf edition only: first run without a config of its own adopts the user's BlenderShelf
+    shelf. Copies, never moves, so the old add-on keeps working untouched. Best effort."""
+    if os.path.exists(path):
+        return
+    import glob
+    try:
+        sources = [os.path.join(bpy.utils.user_resource('SCRIPTS'), "addons", "BlenderShelf", "shelf_config.json")]  # EDITION-KEEP
+        sources += glob.glob(os.path.join(bpy.utils.user_resource('EXTENSIONS'), ".user", "*", "blender_shelf", "shelf_config.json"))  # EDITION-KEEP
+        for src in sources:
+            if os.path.isfile(src):
+                with open(src, "r", encoding="utf-8") as f:
+                    text = f.read()
+                # stored button commands may reference the old operator ids
+                text = text.replace("blender_shelf.", "easy_shelf.").replace("blendershelf_", "easyshelf_")  # EDITION-KEEP
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(text)
+                return
+    except Exception:
+        pass  # ponytail: silent -- a missing import just means a fresh default shelf
+
+
 def _config_path():
     # An extension's own install folder is wiped on every version upgrade
     # (confirmed directly -- see the ADDON_VERSION/bl_info comment above),
@@ -993,7 +1026,10 @@ def _config_path():
     # per-extension data directory Blender provides instead.
     try:
         user_dir = bpy.utils.extension_path_user(__package__, path="", create=True)
-        return os.path.join(user_dir, "shelf_config.json")
+        path = os.path.join(user_dir, "shelf_config.json")
+        if EDITION == "easyshelf":
+            _import_blendershelf_config(path)
+        return path
     except (AttributeError, ValueError):
         # AttributeError: Blender < 4.2, the extensions system doesn't exist
         # yet. ValueError: this __package__ isn't a real extension package
@@ -1735,6 +1771,7 @@ class BLENDERSHELF_OT_pick_icon(bpy.types.Operator):
         return {'FINISHED'}
 
 
+# EDITION-STRIP begin
 class BLENDERSHELF_OT_check_update(bpy.types.Operator):
     """Check the BlenderShelf website for a newer release"""
     bl_idname = "blender_shelf.check_update"
@@ -1778,6 +1815,7 @@ class BLENDERSHELF_OT_check_update(bpy.types.Operator):
             prefs.update_status = "You're up to date (" + ".".join(map(str, current)) + ")"
         self.report({'INFO'}, prefs.update_status)
         return {'FINISHED'}
+# EDITION-STRIP end
 
 
 class BLENDERSHELF_OT_export_settings(bpy.types.Operator):
@@ -2051,10 +2089,12 @@ class BlenderShelfPreferences(bpy.types.AddonPreferences):
     # UI navigation only -- which context's settings the Shelf page shows. Not
     # saved to shelf_config.json (just where the panel is looking).
     ui_context: bpy.props.EnumProperty(items=_CONTEXT_ITEMS, default='SHELF')
+    # EDITION-STRIP begin
     # Session-only, never persisted to shelf_config.json -- result of the last
     # "Check for Updates" click, cleared on Blender restart.
     update_status: bpy.props.StringProperty(default="")
     update_available: bpy.props.BoolProperty(default=False)
+    # EDITION-STRIP end
 
     def draw(self, context):
         layout = self.layout
@@ -2067,12 +2107,14 @@ class BlenderShelfPreferences(bpy.types.AddonPreferences):
         row.operator("blender_shelf.export_settings", icon='EXPORT')
         row.operator("blender_shelf.import_settings", icon='IMPORT')
 
+        # EDITION-STRIP begin
         row = general_box.row(align=True)
         row.operator("blender_shelf.check_update", icon='FILE_REFRESH')
         if self.update_status:
             row.label(text=self.update_status)
         if self.update_available:
             general_box.operator("wm.url_open", text="Open BlenderShelf website", icon='URL').url = DOWNLOAD_PAGE_URL
+        # EDITION-STRIP end
 
         layout.separator()
 
@@ -3641,7 +3683,7 @@ classes = (
     BLENDERSHELF_OT_pref_preset_position,
     BLENDERSHELF_OT_reset_appearance,
     BLENDERSHELF_OT_pick_icon,
-    BLENDERSHELF_OT_check_update,
+    BLENDERSHELF_OT_check_update,  # EDITION-STRIP-LINE
     BLENDERSHELF_OT_export_settings,
     BLENDERSHELF_OT_import_settings,
     BLENDERSHELF_OT_run_command,
@@ -3684,7 +3726,7 @@ def register():
             global _center_first_run_retries
             _center_first_run_retries = _CENTER_FIRST_RUN_MAX_RETRIES
             bpy.app.timers.register(_center_position_on_first_run, first_interval=0.2)
-    _patch_fbx_export()
+    _patch_fbx_export()  # EDITION-STRIP-LINE
     _register_keymap()
     for space in (bpy.types.SpaceView3D, bpy.types.SpaceImageEditor, bpy.types.SpaceNodeEditor):
         _draw_handles.append((space, space.draw_handler_add(draw_shelf, (), 'WINDOW', 'POST_PIXEL')))
@@ -3736,7 +3778,7 @@ def unregister():
     _move_insert_gap = None
     _drag_target = None
     _active_area_ptr = None
-    _unpatch_fbx_export()
+    _unpatch_fbx_export()  # EDITION-STRIP-LINE
     _unregister_keymap()
     if hasattr(bpy.types, "UI_MT_button_context_menu"):
         try:

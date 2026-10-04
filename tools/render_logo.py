@@ -4,7 +4,11 @@ multi-size favicon.ico. Supersamples 4x and downscales for clean edges.
 
 Run: python tools/render_logo.py
 Output: site/assets/logo/blendershelf-icon-<size>.png, favicon.ico
+
+EasyShelf variant (same badge, "E" instead of "B"):
+     python tools/render_logo.py --letter E --prefix easyshelf --out easyshelf/logo
 """
+import argparse
 import os
 from PIL import Image, ImageDraw, ImageFont
 
@@ -20,6 +24,9 @@ SUPERSAMPLE = 4
 SIZES = [512, 256, 180, 128, 64, 48, 32, 16]
 
 
+LETTER = "B"
+
+
 def render(size):
     S = size * SUPERSAMPLE
     img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
@@ -30,7 +37,7 @@ def render(size):
 
     font_size = round(0.54 * S)
     font = ImageFont.truetype(FONT_PATH, font_size)
-    bbox = draw.textbbox((0, 0), "B", font=font)
+    bbox = draw.textbbox((0, 0), LETTER, font=font)
     text_w = bbox[2] - bbox[0]
     text_h = bbox[3] - bbox[1]
 
@@ -45,7 +52,7 @@ def render(size):
 
     text_x = (S - text_w) / 2 - bbox[0]
     text_y = top - bbox[1]
-    draw.text((text_x, text_y), "B", font=font, fill=ORANGE + (255,))
+    draw.text((text_x, text_y), LETTER, font=font, fill=ORANGE + (255,))
 
     row_y = top + text_h + gap_v
     row_x = (S - row_w) / 2
@@ -58,16 +65,23 @@ def render(size):
 
 
 def main():
-    os.makedirs(OUT_DIR, exist_ok=True)
+    global LETTER
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--letter", default="B")
+    ap.add_argument("--prefix", default="blendershelf")
+    ap.add_argument("--out", default=OUT_DIR)
+    args = ap.parse_args()
+    LETTER, out_dir = args.letter, os.path.join(REPO_DIR, args.out) if not os.path.isabs(args.out) else args.out
+    os.makedirs(out_dir, exist_ok=True)
     rendered = {}
     for size in SIZES:
         img = render(size)
         rendered[size] = img
-        path = os.path.join(OUT_DIR, f"blendershelf-icon-{size}.png")
+        path = os.path.join(out_dir, f"{args.prefix}-icon-{size}.png")
         img.save(path)
         print("wrote", path)
 
-    favicon_path = os.path.join(OUT_DIR, "favicon.ico")
+    favicon_path = os.path.join(out_dir, "favicon.ico")
     favicon_sizes = [16, 32, 48]
     rendered[max(favicon_sizes)].save(
         favicon_path,

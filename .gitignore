@@ -13,3 +13,5 @@ __pycache__/
 guide/Video/
 guide/preview/
 guide/BlenderShelf_Guide_*.pdf
+/easyshelf/dist/
+/easyshelf/site/
