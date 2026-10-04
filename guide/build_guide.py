@@ -172,7 +172,7 @@ def framed_image_row(paths, pal, total_w, max_h, gap=10, pad=8):
     return row
 
 
-def make_background(pal, footer_text):
+def make_background(pal, footer_text, brand="BlenderShelf"):
     def draw(c: canvas_mod.Canvas, doc):
         c.setFillColor(pal["bg_darkest"])
         c.rect(0, 0, PAGE_W, PAGE_H, fill=1, stroke=0)
@@ -183,7 +183,7 @@ def make_background(pal, footer_text):
         c.rect(0, PAGE_H - 27, PAGE_W, 1.4, fill=1, stroke=0)
         c.setFillColor(pal["text_muted"])
         c.setFont("Body", 8)
-        c.drawString(MARGIN, PAGE_H - 18, "BlenderShelf")
+        c.drawString(MARGIN, PAGE_H - 18, brand)
         # footer
         c.setStrokeColor(pal["border"])
         c.setLineWidth(0.6)
@@ -205,7 +205,7 @@ def build(content_path, out_path):
         out_path, pagesize=A4,
         leftMargin=MARGIN, rightMargin=MARGIN,
         topMargin=54, bottomMargin=46,
-        title=content["title"], author="BlenderShelf",
+        title=content["title"], author=content.get("brand", "BlenderShelf"),
     )
 
     story = []
@@ -251,7 +251,7 @@ def build(content_path, out_path):
         story.append(KeepTogether(block[:head_group_len]))
         story.extend(block[head_group_len:])
 
-    bg = make_background(pal, content.get("footer_text", ""))
+    bg = make_background(pal, content.get("footer_text", ""), content.get("brand", "BlenderShelf"))
     doc.build(story, onFirstPage=bg, onLaterPages=bg)
     print("built:", out_path)
 
