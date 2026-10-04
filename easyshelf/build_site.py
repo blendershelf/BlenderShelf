@@ -8,7 +8,8 @@ extensions.blender.org ToS forbid "Blender" in an extension's name.
 What differs from the BlenderShelf site (all flagged in easyshelf/docs/site-todo.md):
   * brand text, logo/favicon ("E" badge from easyshelf/logo), lang storage key
   * download -> <owner>/<repo> releases, asset EasyShelf.zip (upload the extension zip under that name)
-  * video guide + PDF guides removed (they show the old name) -- bring back once re-made
+  * video guide removed (it shows the old name); the guide section keeps only the PDF button
+    (easyshelf/guide/*.pdf, built by easyshelf/build_guide.py)
   * feedback form kept; it still posts to the existing Cloudflare Worker (WORKER_HOST), which files issues into the old repo
     (the Worker must allow this site's origin -- see worker/src/index.js ALLOWED_ORIGINS, deployed by the owner with wrangler)
   * GoatCounter snippet removed (the existing counter is named blendershelf)
@@ -57,7 +58,16 @@ def main():
         shutil.copy(f, logo_dir / f.name)
 
     html = (SRC / "index.html").read_text(encoding="utf-8")
-    html = sub_once(html, r'\s*<section id="guide".*?</section>\n', "\n")            # video guide + PDF
+    # guide section: drop the video and its note, keep the PDF button
+    html = sub_once(html, r'\s*<div class="video-wrap">.*?</div>', "")
+    html = sub_once(html, r'\s*<p class="video-note".*?</p>', "")
+    html = html.replace('data-ru="Видеогайд" data-en="Video guide">Видеогайд', 'data-ru="Инструкция" data-en="Guide">Инструкция')
+    guide_out = OUT / "guide"
+    guide_out.mkdir(exist_ok=True)
+    for lang in ("RU", "EN"):
+        pdf = HERE / "guide" / f"EasyShelf_Guide_{lang}.pdf"
+        assert pdf.exists(), f"missing {pdf} -- run python easyshelf/build_guide.py first"
+        shutil.copy(pdf, guide_out / pdf.name)
     html = sub_once(html, r'<script data-goatcounter=[^>]*></script>\n', "")           # old analytics counter
     html = rebrand(html, pages, repo_url)
     assert "blendershelf" not in html.lower() and not re.search(r"Blender\W*(<[^>]+>\s*)*Shelf", html), "old name left in index.html"
