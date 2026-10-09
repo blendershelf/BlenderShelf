@@ -62,7 +62,7 @@
       "heading": "Preferences: general settings",
       "paragraphs": [
         "The \"Backup & Updates\" box: Export/Import Settings save and load every addon setting as one JSON file, and \"Check for Updates\" checks the website for a newer release and offers a download link.",
-        "The collapsible \"Appearance\" panel applies to every shelf: button size and icon opacity, labels (visibility, font size, color, placement relative to the button), button and background colors, Show Number for ordinal numbers, and Show FBX Export Button for an FBX export button with Selected Only on."
+        "The collapsible \"Appearance\" panel applies to every shelf: button size and icon opacity, labels (visibility, font size, color, placement relative to the button), button and background colors, and Show Number for ordinal numbers."
       ],
       "image": null
     },

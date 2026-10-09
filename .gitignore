@@ -16,3 +16,10 @@ guide/BlenderShelf_Guide_*.pdf
 /easyshelf/dist/
 /easyshelf/site/
 /easyshelf/guide/
+
+easyshelf/docs/release-notes-*.md
+easyshelf/docs/transition-plan.md
+easyshelf/videoguide/
+easyshelf/youtube/
+easyshelf/youtube_ru/
+.impeccable/

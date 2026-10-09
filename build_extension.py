@@ -15,8 +15,8 @@ Run: python build_extension.py                      -> dist/blender_shelf-<versi
 
 The extensions.blender.org ToS forbid "Blender" in an extension's name, tampering with Blender
 internals / other add-ons, and promoting updates from inside Blender's UI. So the easyshelf
-edition is the same source with: everything between `# EDITION-STRIP begin/end` (update checker,
-FBX-exporter patch) and lines tagged `# EDITION-STRIP-LINE` removed, names rewritten
+edition is the same source with: everything between `# EDITION-STRIP begin/end` (update checker)
+and lines tagged `# EDITION-STRIP-LINE` removed, names rewritten
 (BlenderShelf -> EasyShelf; lines tagged `# EDITION-KEEP` are left alone), no network permission,
 and a first-run import of the user's BlenderShelf settings.
 """
@@ -55,7 +55,7 @@ license = [
 blender_version_min = "4.2.0"
 
 [permissions]
-files = "Export and import settings and scripts"
+files = "Export/import settings, run user scripts from a cache"
 '''
 
 URL_MASK = ("blendershelf.github.io/BlenderShelf", "\0SITEURL\0")
@@ -89,6 +89,7 @@ def check_easyshelf(src, manifest_text):
     """Fail the build rather than ship something the ToS would reject."""
     for bad in ("bl_info = {", "urllib", "io_scene_fbx", "check_update", "VERSIONS_JSON_URL", "boosty", "donat", "dalink"):
         assert bad not in src, f"easyshelf edition still contains {bad!r}"
+    assert not re.search(r"\b(exec|eval)\s*\(", src), "Extensions rule: no exec()/eval()"
     for n, line in enumerate(src.splitlines(), 1):
         if re.search(r"blender_shelf|BlenderShelf|BLENDERSHELF|blendershelf(?!\.github)", line.replace(URL_MASK[0], "")):
             assert "EDITION-KEEP" in line, f"old name left at line {n}: {line.strip()[:80]}"
