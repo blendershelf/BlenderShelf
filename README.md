@@ -1,3 +1,5 @@
+> **BlenderShelf is now [EasyShelf](https://extensions.blender.org/add-ons/easy-shelf/).** Install it from Blender: Preferences → Get Extensions. Your settings carry over. See [how to switch](https://blendershelf.github.io/BlenderShelf/#move).
+
 <p align="center">
   <img src="site/assets/logo/blendershelf-icon-128.png" width="96" height="96" alt="BlenderShelf logo">
 </p>
