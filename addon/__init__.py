@@ -50,6 +50,12 @@ EDITION = "blendershelf"
 # EDITION-STRIP begin
 VERSIONS_JSON_URL = "https://blendershelf.github.io/BlenderShelf/versions.json"
 DOWNLOAD_PAGE_URL = "https://blendershelf.github.io/BlenderShelf/#download"
+EXTENSIONS_URL = "https://extensions.blender.org/add-ons/easy-shelf/"
+
+
+def _easyshelf_enabled():
+    return any(k == "easy_shelf" or k.endswith(".easy_shelf")
+               for k in bpy.context.preferences.addons.keys())
 # EDITION-STRIP end
 
 _icon_textures = {}
@@ -1822,6 +1828,8 @@ class BLENDERSHELF_OT_check_update(bpy.types.Operator):
                 tuple(int(part) for part in v["addon_version"].split("."))
                 for v in versions
             )
+            notice = next((v["notice"] for v in versions
+                           if v.get("notice") and tuple(int(p) for p in v["addon_version"].split(".")) == latest), "")
         except Exception as e:
             prefs.update_available = False
             prefs.update_status = f"Check failed: {e}"
@@ -1831,10 +1839,10 @@ class BLENDERSHELF_OT_check_update(bpy.types.Operator):
         current = ADDON_VERSION
         if latest > current:
             prefs.update_available = True
-            prefs.update_status = "Update available: " + ".".join(map(str, latest))
+            prefs.update_status = notice or ("Update available: " + ".".join(map(str, latest)))
         else:
             prefs.update_available = False
-            prefs.update_status = "You're up to date (" + ".".join(map(str, current)) + ")"
+            prefs.update_status = notice or ("You're up to date (" + ".".join(map(str, current)) + ")")
         self.report({'INFO'}, prefs.update_status)
         return {'FINISHED'}
 # EDITION-STRIP end
@@ -2118,6 +2126,22 @@ class BlenderShelfPreferences(bpy.types.AddonPreferences):
 
     def draw(self, context):
         layout = self.layout
+
+        # EDITION-STRIP begin
+        move_box = layout.box()
+        if _easyshelf_enabled():
+            move_box.label(text="EasyShelf is enabled. You can disable BlenderShelf now:", icon='INFO')
+            move_box.label(text="with both on, the shelf and pie menu are drawn twice.")
+        else:
+            move_box.label(text="BlenderShelf is now EasyShelf", icon='INFO')
+            for line in ("The add-on moved to the official Blender Extensions platform",
+                         "and had to be renamed (platform rules). Same author, same features.",
+                         "First: Backup & Updates > Export Settings (save the JSON).",
+                         "Then install EasyShelf: Preferences > Get Extensions.",
+                         "Then disable BlenderShelf. Needs Blender 4.2+."):
+                move_box.label(text=line)
+            move_box.operator("wm.url_open", text="Get EasyShelf", icon='URL').url = EXTENSIONS_URL
+        # EDITION-STRIP end
 
         # Boxed + labeled so it reads as a separate group from the per-context
         # shelf settings below, instead of blending into the same visual block.
